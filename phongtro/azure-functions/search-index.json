@@ -1,0 +1,29 @@
+{
+  "name": "rooms-public",
+  "fields": [
+    { "name": "id",                "type": "Edm.String",             "key": true,  "searchable": false, "filterable": true,  "sortable": false, "facetable": false, "retrievable": true },
+    { "name": "title",             "type": "Edm.String",             "searchable": true,  "filterable": false, "sortable": false, "facetable": false, "retrievable": true, "analyzer": "vi.microsoft" },
+    { "name": "description",       "type": "Edm.String",             "searchable": true,  "filterable": false, "sortable": false, "facetable": false, "retrievable": true, "analyzer": "vi.microsoft" },
+    { "name": "price_month",       "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": true,  "facetable": true,  "retrievable": true },
+    { "name": "est_monthly_cost",  "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "deposit_amount",    "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "area_m2",           "type": "Edm.Double",             "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "max_people",        "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true },
+    { "name": "floor",             "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": false, "facetable": false, "retrievable": true },
+    { "name": "street",            "type": "Edm.String",             "searchable": true,  "filterable": true,  "sortable": false, "facetable": false, "retrievable": true, "analyzer": "vi.microsoft" },
+    { "name": "ward",              "type": "Edm.String",             "searchable": true,  "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true, "analyzer": "vi.microsoft" },
+    { "name": "area",              "type": "Edm.String",             "searchable": true,  "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true, "analyzer": "vi.microsoft" },
+    { "name": "city",              "type": "Edm.String",             "searchable": false, "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true },
+    { "name": "location",          "type": "Edm.GeographyPoint",     "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "amenities",         "type": "Collection(Edm.String)", "searchable": false, "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true },
+    { "name": "curfew",            "type": "Edm.Boolean",            "searchable": false, "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true },
+    { "name": "curfew_time",       "type": "Edm.String",             "searchable": false, "filterable": false, "sortable": false, "facetable": false, "retrievable": true },
+    { "name": "available_from",    "type": "Edm.DateTimeOffset",     "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "landlord_verified", "type": "Edm.Boolean",            "searchable": false, "filterable": true,  "sortable": false, "facetable": true,  "retrievable": true },
+    { "name": "rating_avg",        "type": "Edm.Double",             "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "rating_count",      "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true },
+    { "name": "image_urls",        "type": "Collection(Edm.String)", "searchable": false, "filterable": false, "sortable": false, "facetable": false, "retrievable": true },
+    { "name": "version",           "type": "Edm.Int32",              "searchable": false, "filterable": true,  "sortable": false, "facetable": false, "retrievable": true },
+    { "name": "updated_at",        "type": "Edm.DateTimeOffset",     "searchable": false, "filterable": true,  "sortable": true,  "facetable": false, "retrievable": true }
+  ]
+}

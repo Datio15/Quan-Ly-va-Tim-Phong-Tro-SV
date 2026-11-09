@@ -1,0 +1,60 @@
+# Chạy local và trên VM OpenStack bằng CÙNG một file.
+#   cp .env.example .env   # điền giá trị
+#   docker compose up -d db minio
+# Lần đầu khởi động với volume trống, PostgreSQL tự nạp schema.sql rồi seed.sql.
+# Muốn nạp lại từ đầu: docker compose down -v && docker compose up -d db
+#
+# Trên vm-data: đặt DATA_DIR=/srv/data trong .env để dữ liệu nằm trên volume Cinder.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+    volumes:
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ${DATA_DIR:-./data}/minio:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # Bỏ chú thích khi mô-đun sẵn sàng (Người 2: api, worker; Người 3: web).
+  # Trên VM thật, api/web/worker chạy ở vm-app và DB_HOST, MINIO_ENDPOINT trỏ sang IP nội bộ của vm-data.
+
+  # api:
+  #   build: ./backend
+  #   env_file: .env
+  #   depends_on:
+  #     db: { condition: service_healthy }
+  #   ports: ["8000:8000"]
+
+  # worker:
+  #   build: ./worker
+  #   env_file: .env
+  #   depends_on:
+  #     db: { condition: service_healthy }
+
+  # web:
+  #   build: ./frontend
+  #   depends_on: [api]
+  #   ports: ["80:80"]

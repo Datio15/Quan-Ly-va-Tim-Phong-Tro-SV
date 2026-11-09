@@ -1,0 +1,14 @@
+#cloud-config
+# Cài sẵn Docker, Compose v2 và công cụ cho sao lưu khi VM khởi động lần đầu (Ubuntu 24.04).
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - postgresql-client-16
+  - curl
+  - openssl
+  - python3
+timezone: Asia/Ho_Chi_Minh
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker ubuntu
