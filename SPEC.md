@@ -46,12 +46,12 @@ Việc cần làm: <mô tả cụ thể, kèm mã chức năng F.. và mã kiể
 
 | Mô-đun | Mục cần dán | File cần dán |
 |---|---|---|
-| Backend API (Người 2) | 2, 3, 7, 8, 9, 10, 19 | `schema.sql` |
-| Worker (Người 2, 6) | 3, 4, 11, 12, 16 | `schema.sql` (bảng sync_outbox, job_runs, notifications) |
-| Frontend (Người 3) | 1, 7, 9, 10 | – |
-| Azure Functions (Người 5) | 3, 4, 11 | `search-index.json` |
-| OpenStack (Người 4) | 2, 13, 15, 16 | `infra/openstack/*` |
-| Thông báo, AI (Người 1 hoặc 6) | 3C, 11.5, 11.6, 12 | – |
+| Backend API (Dương Hoàng Anh) | 2, 3, 7, 8, 9, 10, 19 | `schema.sql` |
+| Worker (Dương Hoàng Anh, Phạm Nguyễn Thu Giang) | 3, 4, 11, 12, 16 | `schema.sql` (bảng sync_outbox, job_runs, notifications) |
+| Frontend (Người Nguyễn Tiến Đạt) | 1, 7, 9, 10 | – |
+| Azure Functions (Người Trịnh Thị Vân) | 3, 4, 11 | `search-index.json` |
+| OpenStack (Người Vũ Tuần Anh) | 2, 13, 15, 16 | `infra/openstack/*` |
+| Thông báo, AI (Đặng Thế Đạt hoặc Phạm Nguyễn Thu Giang) | 3C, 11.5, 11.6, 12 | – |
 
 Không dán khóa, mật khẩu hay token thật vào khung chat với AI.
 
