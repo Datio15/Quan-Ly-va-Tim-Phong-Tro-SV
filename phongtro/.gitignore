@@ -1,0 +1,31 @@
+# Bí mật và cấu hình thật
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*openrc*
+local.settings.json
+ 
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+ 
+# Node
+node_modules/
+dist/
+.vite/
+ 
+# Dữ liệu và bản sao lưu cục bộ (seed/seed.sql được phép commit)
+*.dump
+*.tar.gz.enc
+backups/
+data/
+ 
+# Công cụ
+.DS_Store
+.idea/
+.vscode/
+ 

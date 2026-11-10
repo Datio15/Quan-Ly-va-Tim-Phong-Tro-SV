@@ -9,7 +9,7 @@ Bài tập lớn môn Điện toán đám mây. Hệ thống hai phía (sinh vi�
 ```bash
 cp .env.example .env              # điền ít nhất DB_PASSWORD, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
 docker compose up -d db minio     # lần đầu tự nạp schema + 80 phòng dữ liệu giả
-docker compose exec db psql -U phongtro -d phongtro -c "select count(*) from v_rooms_public where status='published'"
+docker compose exec db psql -U phongtro_user -d phongtro_db -c "select count(*) from v_rooms_public where status='published'"
 ```
 
 MinIO console: http://localhost:9001 · PostgreSQL: localhost:5432.
