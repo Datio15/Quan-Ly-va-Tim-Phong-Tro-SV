@@ -63,14 +63,16 @@ put AZURE_SEARCH_QUERY_KEY "$(az search query-key list --service-name "$SEARCH" 
 # Khóa admin chỉ dành cho Function (ghi chỉ mục): lưu vào Key Vault ở bước 5, không đưa lên VM.
 
 step "4. Azure Maps"
-az maps account create -n "$MAPS" -g "$RG" --sku G2 --kind Gen2 --accept-tos -o none
-put AZURE_MAPS_KEY "$(az maps account keys list -n "$MAPS" -g "$RG" --query primaryKey -o tsv)"
+# az maps account create -n "$MAPS" -g "$RG" --sku G2 --kind Gen2 --accept-tos -o none
+#put AZURE_MAPS_KEY ""
+az maps account create -n "$MAPS" -g "$RG" -l global --sku G2 --kind Gen2 --accept-tos -o none || true
+put AZURE_MAPS_KEY "$(az maps account keys list -n "$MAPS" -g "$RG" --query primaryKey -o tsv 2>/dev/null || echo "")"
 
 step "5. Key Vault và các bí mật"
-az keyvault create -n "$KV" -g "$RG" -l "$LOC" -o none
+az keyvault create -n "$KV" -g "$RG" -l "$LOC" --enable-rbac-authorization false -o none || true
 ME="$(az ad signed-in-user show --query id -o tsv)"
 KV_ID="$(az keyvault show -n "$KV" --query id -o tsv)"
-az role assignment create --role "Key Vault Secrets Officer" --assignee "$ME" --scope "$KV_ID" -o none || true
+az keyvault set-policy -n "$KV" --upn "24022842@vnu.edu.vn" --secret-permissions get list set delete -o none
 echo "   Chờ 60 giây để quyền có hiệu lực..."; sleep 60
 PASS="$(openssl rand -base64 32)"
 az keyvault secret set --vault-name "$KV" -n backup-passphrase --value "$PASS" -o none
