@@ -2,11 +2,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def process_sync_outbox() -> None:
     """
-    Đọc các bản ghi chưa xử lý từ bảng sync_outbox (chu kỳ 5s),
-    đồng bộ sang dịch vụ đích và cập nhật trạng thái.
+    Đọc các bản ghi chưa xử lý từ bảng sync_outbox (chu kỳ OUTBOX_POLL_SECONDS),
+    đồng bộ sang Azure AI Search & Blob, và cập nhật trạng thái.
     """
     logger.debug("[Outbox] Đang kiểm tra bảng sync_outbox...")
-    # TODO: Kết nối DB qua SQLAlchemy, truy vấn batch pending từ sync_outbox
-    # TODO: Thực thi đồng bộ và cập nhật status / retry_count
+    # TODO (Mục 12.2): Truy vấn batch status='pending' AND next_attempt_at <= now() (FOR UPDATE SKIP LOCKED)
+    # TODO (Mục 4): Đọc từ v_rooms_public, đẩy ảnh lên Blob public-images, lọc đúng 24 trường cho phép
+    # TODO: Gọi Azure Function ingest-room; cập nhật status='sent', sent_at=now()
+    #       hoặc tăng attempts, cập nhật last_error, next_attempt_at (backoff) / status='failed'
