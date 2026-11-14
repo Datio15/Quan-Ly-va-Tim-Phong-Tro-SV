@@ -1,10 +1,14 @@
 # Chạy local và trên VM OpenStack bằng CÙNG một file.
 #   cp .env.example .env   # điền giá trị
-#   docker compose up -d db minio
+#   docker compose up -d --build        # local: chạy tất cả (db, minio, api, web)
 # Lần đầu khởi động với volume trống, PostgreSQL tự nạp schema.sql rồi seed.sql.
-# Muốn nạp lại từ đầu: docker compose down -v && docker compose up -d db
+# Muốn nạp lại từ đầu: docker compose down -v && rm -rf data/postgres && docker compose up -d db
 #
-# Trên vm-data: đặt DATA_DIR=/srv/data trong .env để dữ liệu nằm trên volume Cinder.
+# Trên VM thật:
+#   vm-data: DATA_DIR=/srv/data;  docker compose up -d db minio
+#   vm-app : DB_HOST, MINIO_ENDPOINT = IP nội bộ vm-data;  docker compose up -d --build api web (worker khi sẵn sàng)
+# api KHÔNG khai báo depends_on db/minio để trên vm-app không vô tình khởi động db/minio cục bộ;
+# api tự chờ CSDL lúc khởi động (app/seed_passwords.py) và restart: unless-stopped lo phần còn lại.
 services:
   db:
     image: postgres:16
@@ -38,23 +42,28 @@ services:
       - "9000:9000"
       - "9001:9001"
 
-  # Bỏ chú thích khi mô-đun sẵn sàng (Người 2: api, worker; Người 3: web).
-  # Trên VM thật, api/web/worker chạy ở vm-app và DB_HOST, MINIO_ENDPOINT trỏ sang IP nội bộ của vm-data.
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"          # chỉ để thử local; trên VM sg-app chỉ mở 80/443
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  # api:
-  #   build: ./backend
-  #   env_file: .env
-  #   depends_on:
-  #     db: { condition: service_healthy }
-  #   ports: ["8000:8000"]
-
+  # Bỏ chú thích khi mô-đun worker sẵn sàng (Người 2, 6).
   # worker:
   #   build: ./worker
+  #   restart: unless-stopped
   #   env_file: .env
-  #   depends_on:
-  #     db: { condition: service_healthy }
 
-  # web:
-  #   build: ./frontend
-  #   depends_on: [api]
-  #   ports: ["80:80"]
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"

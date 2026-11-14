@@ -21,8 +21,8 @@ UNSET_HASH = "!unset-run-backend-seed"
 
 SCHOOLS = [
     # (tên, viết tắt, lat, lng) — tọa độ gần đúng, kiểm tra lại trên Azure Maps
-    ("Đại học Quốc gia Hà Nội – 144 Xuân Thủy (ví dụ)", "DHQGHN", 21.0379, 105.7820),
-    ("Đại học Bách khoa Hà Nội (ví dụ)", "BKHN", 21.0056, 105.8431),
+    ("Đại học Quốc gia Hà Nội-144 Xuân Thủy", "DHQGHN", 21.0379, 105.7820),
+    ("Đại học Bách khoa Hà Nội", "BKHN", 21.0056, 105.8431),
 ]
 AREAS = ["Cầu Giấy", "Mai Dịch", "Dịch Vọng", "Nghĩa Tân", "Cổ Nhuế", "Mỹ Đình"]
 STREETS = ["Xuân Thủy", "Hồ Tùng Mậu", "Trần Quốc Hoàn", "Phạm Văn Đồng", "Nguyễn Phong Sắc",
