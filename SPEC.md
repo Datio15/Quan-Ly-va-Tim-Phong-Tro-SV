@@ -1,14 +1,14 @@
 # SPEC – Quản lý và tìm phòng trọ cho sinh viên (Azure + OpenStack)
 
-Phiên bản 0.2 · 12/11/2026 · Người giữ file: Người 1 (nhóm trưởng)
+Phiên bản 0.3 · 12/11/2026 · Người giữ file: Người 1 (Đặng Thế Đạt, nhóm trưởng)
 
 File này là **nguồn sự thật duy nhất** về kiến trúc, dữ liệu, API và quy ước. Khi nhờ AI sinh code, dán phần liên quan của file này (mục 0 chỉ rõ phần nào cho mô-đun nào). **Muốn đổi tên bảng, API hay luồng dữ liệu thì sửa file này trước, báo cả nhóm, rồi mới sửa code.**
 
-Các lựa chọn đánh dấu *mặc định* là đề xuất ban đầu; nhóm có thể đổi **trước 13/11** (mục 23).
+Các lựa chọn đánh dấu *mặc định* là đề xuất ban đầu. Các quyết định đã chốt nằm ở mục 23 và được ưu tiên khi có chỗ lệch.
 
 **Mục lục**
 
-0. Cách dùng với AI · 1. Mục tiêu và phạm vi · 2. Kiến trúc · 3. Luồng chi tiết · 4. Phân loại dữ liệu · 5. Công nghệ · 6. Cấu trúc kho mã · 7. Vai trò và quyền · 8. Mô hình dữ liệu · 9. Quy tắc nghiệp vụ · 10. API · 11. Tích hợp Azure · 12. Worker · 13. Hạ tầng OpenStack · 14. Hạ tầng Azure · 15. Biến môi trường · 16. Sao lưu và khôi phục · 17. Giám sát và cảnh báo · 18. Dữ liệu mẫu · 19. Bảo mật · 20. Quy ước làm việc · 21. Mô-đun và tiêu chí nghiệm thu · 22. Kịch bản kiểm thử · 23. Quyết định còn mở · 24. Mốc · 25. Thuật ngữ
+0. Cách dùng với AI · 1. Mục tiêu và phạm vi · 2. Kiến trúc · 3. Luồng chi tiết · 4. Phân loại dữ liệu · 5. Công nghệ · 6. Cấu trúc kho mã · 7. Vai trò và quyền · 8. Mô hình dữ liệu · 9. Quy tắc nghiệp vụ · 10. API · 11. Tích hợp Azure · 12. Worker · 13. Hạ tầng OpenStack · 14. Hạ tầng Azure · 15. Biến môi trường · 16. Sao lưu và khôi phục · 17. Giám sát và cảnh báo · 18. Dữ liệu mẫu · 19. Bảo mật · 20. Quy ước làm việc · 21. Mô-đun và tiêu chí nghiệm thu · 22. Kịch bản kiểm thử · 23. Quyết định đã chốt · 24. Mốc · 25. Thuật ngữ
 
 File đi kèm (đã chạy thử, xem README):
 
@@ -20,6 +20,17 @@ File đi kèm (đã chạy thử, xem README):
 | `scripts/backup.sh`, `scripts/restore-test.sh` | Sao lưu mã hóa lên Azure Blob, khôi phục thử có đối chiếu |
 | `infra/openstack/setup.sh`, `cloud-init.yaml` | Dựng project, mạng, security group, VM, volume, floating IP |
 | `infra/azure/setup.sh` | Dựng Storage, AI Search + chỉ mục, Maps, Key Vault, App Insights, Function App |
+
+### Thành viên
+
+| Người | Họ tên | Phụ trách |
+|---|---|---|
+| 1 | Đặng Thế Đạt (nhóm trưởng) | Quản lý, SPEC, dữ liệu mẫu, kiểm thử; Thông báo Telegram (F12, mục 3F); Logic App cảnh báo (F15) |
+| 2 | Dương Hoàng Anh | Backend API; worker (cùng Người 6) |
+| 3 | Nguyễn Tiến Đạt | Frontend |
+| 4 | Vũ Tuấn Anh | OpenStack |
+| 5 | Trịnh Thị Vân | Azure |
+| 6 | Phạm Nguyễn Thu Giang | Tích hợp, kiểm thử hai cloud; sao lưu (F13); worker (cùng Người 2) |
 
 ---
 
@@ -51,7 +62,7 @@ Việc cần làm: <mô tả cụ thể, kèm mã chức năng F.. và mã kiể
 | Frontend (Người 3) | 1, 7, 9, 10 | – |
 | Azure Functions (Người 5) | 3, 4, 11 | `search-index.json` |
 | OpenStack (Người 4) | 2, 13, 15, 16 | `infra/openstack/*` |
-| Thông báo, AI (Người 1 hoặc 6) | 3C, 11.5, 11.6, 12 | – |
+| Thông báo Telegram, Logic App (Người 1) | 3C, 3F, 12, 17 | – |
 
 Không dán khóa, mật khẩu hay token thật vào khung chat với AI.
 
@@ -63,7 +74,7 @@ Nền tảng hai phía: **sinh viên** tìm và so sánh phòng trọ, biết ch
 
 ### Danh sách chức năng
 
-Ưu tiên: **M** = MVP (bắt buộc trước 23/11), **S** = nên có, **C** = nếu còn thời gian.
+Ưu tiên: **M** = MVP (bắt buộc trước 23/11), **S** = nên có. Mức C (F18 đến F22) đã bỏ ở mục 23.
 
 | Mã | Chức năng | Ưu tiên | Người chính |
 |---|---|---|---|
@@ -78,21 +89,14 @@ Nền tảng hai phía: **sinh viên** tìm và so sánh phòng trọ, biết ch
 | F09 | Yêu thích; đánh giá sau khi xem/thuê; báo cáo đánh giá sai | M | 2, 3 |
 | F10 | Đồng bộ tin công khai OpenStack → Azure AI Search + Blob, có thử lại và đồng bộ lại bằng tay | M | 2, 5, 4 |
 | F11 | Tìm kiếm dự phòng bằng CSDL khi Azure không phản hồi | M | 2 |
-| F12 | Nhắc lịch xem phòng qua Telegram (hẹn giờ từ Azure, gửi từ OpenStack) | M | 1/6, 5 |
+| F12 | Nhắc lịch xem phòng qua Telegram (hẹn giờ từ Azure, gửi từ OpenStack) | M | 1, 5 |
 | F13 | Sao lưu hằng ngày mã hóa sang Azure Blob; khôi phục thử có đo thời gian | M | 4, 5, 6 |
 | F14 | Trang trạng thái hệ thống cho quản trị (đồng bộ, sao lưu, việc nền) | M | 2, 3 |
-| F15 | Giám sát Application Insights và cảnh báo lỗi qua Telegram/email | M | 5, 6 |
+| F15 | Giám sát Application Insights và cảnh báo lỗi qua Telegram/email | M | 1, 5, 6 |
 | F16 | Khách thuê, hợp đồng (file giả), nhắc hợp đồng sắp hết hạn | S | 2, 3 |
 | F17 | Nhập chỉ số điện nước, tạo hóa đơn tháng, đánh dấu đã trả, nhắc quá hạn | S | 2, 3 |
-| F18 | Hóa đơn PDF kèm mã VietQR | C | 2 |
-| F19 | Báo cáo doanh thu, công nợ, tỷ lệ lấp đầy | C | 2, 3 |
-| F20 | Lưu tiêu chí tìm, báo khi có phòng mới phù hợp | C | 2 |
-| F21 | Kiểm duyệt ảnh tự động bằng Azure AI Content Safety | C | 1/6 |
-| F22 | Đọc chỉ số công tơ từ ảnh bằng Azure AI Document Intelligence | C | 1/6 |
 
-Dịch vụ AI có thể bị giới hạn ở gói sinh viên; nếu bị chặn thì bỏ F21, F22, phần còn lại không ảnh hưởng.
-
-**Ngoài phạm vi:** thanh toán thật, gửi SMS, ứng dụng di động riêng, dữ liệu thật của người khác, cào dữ liệu từ trang khác.
+**Ngoài phạm vi:** F18 đến F22 (hóa đơn PDF kèm VietQR, báo cáo doanh thu, lưu tiêu chí tìm, kiểm duyệt ảnh và đọc công tơ bằng AI; đã bỏ ở mục 23), thanh toán thật, gửi SMS, ứng dụng di động riêng, dữ liệu thật của người khác, cào dữ liệu từ trang khác.
 
 ---
 
@@ -137,7 +141,7 @@ Dịch vụ AI có thể bị giới hạn ở gói sinh viên; nếu bị chặ
 | MinIO | vm-data, Docker | 9000 (chỉ từ sg-app), 9001 console | 4 |
 | Function `ingest-room`, `daily-ticks` | Azure Functions | HTTPS | 5 |
 | AI Search, Blob, Queue, Maps, Key Vault, App Insights | Azure | HTTPS | 5 |
-| Logic Apps (cảnh báo) | Azure | – | 1/6 |
+| Logic Apps (cảnh báo) | Azure | – | 1 |
 
 ### Nguyên tắc bất di bất dịch
 
@@ -224,7 +228,7 @@ Lưu ý cho báo cáo: bản sao lưu tuy đã mã hóa vẫn là dữ liệu c�
 | CSDL | PostgreSQL 16 | `schema.sql` là bản đầu; thay đổi sau bằng Alembic |
 | Kho file | MinIO (API S3) | Thư viện `minio` hoặc `boto3` |
 | Worker | Python 3.12, cùng mã nguồn mô hình với backend | `azure-storage-blob`, `azure-storage-queue`, `httpx` |
-| Frontend | React 18, Vite, TypeScript, React Router, TanStack Query | CSS: Tailwind hoặc thư viện có sẵn, chọn một |
+| Frontend | React 18, Vite, TypeScript, React Router, TanStack Query | CSS: Tailwind (đã chốt, mục 23) |
 | Bản đồ | Azure Maps Web SDK v3 | Khóa riêng cho Maps |
 | Tìm kiếm | Azure AI Search, gói Free, API `2024-07-01` | `azure-search-documents` |
 | Hàm | Azure Functions, Python 3.11, mô hình lập trình v2 | Gói Flex Consumption (hoặc gói có sẵn trên tài khoản) |
@@ -322,7 +326,7 @@ sync_outbox, job_runs, processed_messages, notifications, audit_log: bảng kỹ
 |---|---|---|
 | Người dùng | `users`, `schools` | Email duy nhất không phân biệt hoa thường |
 | Tin đăng | `houses`, `rooms`, `room_amenities`, `amenities`, `room_images`, `cost_rates` | `houses.area` là khu vực quen gọi để lọc (mục 9.6) |
-| Sinh viên | `favorites`, `saved_searches`, `bookings`, `reviews`, `reports` | Chỉ mục duy nhất chặn hai lịch hiệu lực trùng giờ |
+| Sinh viên | `favorites`, `saved_searches`, `bookings`, `reviews`, `reports` | Chỉ mục duy nhất chặn hai lịch hiệu lực trùng giờ; `saved_searches` có trong `schema.sql` nhưng chưa dùng (F20 đã bỏ) |
 | Chủ trọ | `tenants`, `meter_readings`, `invoices` | `invoices.total` là cột tự tính |
 | Kỹ thuật | `sync_outbox`, `job_runs`, `processed_messages`, `notifications`, `audit_log` | Xem mục 12, 16 |
 
@@ -405,7 +409,6 @@ Từ 1/7/2025 Việt Nam bỏ cấp quận/huyện, nên dữ liệu dùng `ward
 - Mã hóa đơn `HD-YYYYMM-NNNN` (NNNN tăng theo tháng). Hạn thanh toán ngày 10 tháng M+1.
 - Mỗi khách thuê một hóa đơn mỗi tháng (ràng buộc duy nhất). Tạo lại tháng đã có → `409 INVOICE_EXISTS`.
 - `unpaid` quá hạn → việc nền `invoice_due_check` chuyển `overdue` và nhắc chủ trọ.
-- VietQR (F18): mã theo chuẩn VietQR/EMVCo với số tài khoản **giả**; dùng thư viện sinh mã hoặc dịch vụ tạo ảnh QR của VietQR (kiểm tra tài liệu trước khi dùng).
 
 ### 9.9 Hợp đồng sắp hết hạn (F16)
 
@@ -467,7 +470,6 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | PUT | /rooms/{id}/review | Sinh viên | Tạo hoặc sửa đánh giá của mình |
 | POST | /reports | Sinh viên | Báo cáo phòng/đánh giá |
 | GET, PUT, DELETE | /favorites, /favorites/{room_id} | Sinh viên | Yêu thích |
-| GET, POST, DELETE | /saved-searches, /saved-searches/{id} | Sinh viên | Tiêu chí đã lưu (C) |
 | POST | /bookings | Sinh viên | Đặt lịch |
 | GET | /bookings | Sinh viên, Chủ trọ | Lịch của tôi (chủ trọ: lịch các phòng của mình); lọc `status` |
 | POST | /bookings/{id}/confirm, /decline, /cancel, /done | Theo mục 9.3 | Chuyển trạng thái |
@@ -486,12 +488,10 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | GET, POST | /tenants | Khách thuê (S) |
 | PATCH | /tenants/{id} | Sửa, kết thúc thuê (S) |
 | POST | /tenants/{id}/files | Tải CCCD/hợp đồng GIẢ vào bucket private (S) |
-| POST | /meter-readings | Nhập chỉ số tháng (S); `/meter-readings/ocr` (C) |
+| POST | /meter-readings | Nhập chỉ số tháng (S) |
 | POST | /invoices/generate | Body `{"month":"2026-10"}`: tạo hóa đơn cho mọi khách đang thuê (S) |
 | GET | /invoices | Lọc `month`, `status` (S) |
 | POST | /invoices/{id}/paid | Đánh dấu đã trả (S) |
-| GET | /invoices/{id}/pdf | PDF kèm VietQR (C) |
-| GET | /reports/summary | Query `month`: doanh thu, công nợ, tỷ lệ lấp đầy (C) |
 
 **Quản trị** (tiền tố `/admin`)
 
@@ -720,12 +720,6 @@ Lịch NCRONTAB tính theo **UTC** (UTC+7 trừ 7 giờ):
 - Geocode địa chỉ khi chủ trọ nhập (Search Address API); thử sớm với địa chỉ ngõ, hẹp ở Việt Nam, nếu kém chính xác thì cho kéo ghim.
 - Khóa Maps nằm trong trình duyệt nên dùng khóa riêng cho Maps, không dùng chung với dịch vụ khác. Nếu có thời gian, chuyển sang xác thực bằng token ngắn hạn do api cấp.
 
-### 11.6 Dịch vụ AI tùy chọn (F21, F22)
-
-- Content Safety: khi có `CONTENT_SAFETY_ENDPOINT`, api gửi ảnh vừa tải để phân tích; vượt ngưỡng → `moderation = rejected` kèm lý do; không cấu hình → ảnh ở `pending` chờ quản trị duyệt tay.
-- Document Intelligence: gửi ảnh công tơ, lấy số đọc được, chủ trọ xác nhận trước khi lưu (`source = 'ocr'`).
-- Lưu ý dữ liệu: ảnh phòng và ảnh công tơ không chứa thông tin định danh; **không bao giờ** gửi ảnh CCCD sang dịch vụ AI.
-
 ---
 
 ## 12. Worker
@@ -800,9 +794,9 @@ Script: `infra/openstack/setup.sh` (chạy lại được nhiều lần). Mặc 
 | Volume | `vol-data` 20 GB gắn vào `vm-data`, mount `/srv/data` |
 | Snapshot | `openstack volume snapshot create --volume vol-data --force snap-vol-data-<ngày>` mỗi tối và trước mỗi lần demo |
 
-**Máy host:** cần tối thiểu 16 GB RAM cho DevStack và 2 VM 3 GB. Chạy liên tục đến 30/11, tắt chế độ ngủ, sao lưu ảnh đĩa máy host sau khi dựng xong (DevStack không đảm bảo bền qua khởi động lại; ghi lại các bước khôi phục nếu phải `./stack.sh` lại).
+**Máy host:** cần tối thiểu 16 GB RAM cho DevStack và 2 VM 3 GB. Chạy liên tục đến 30/11, tắt chế độ ngủ, sao lưu ảnh đĩa máy host sau khi dựng xong (DevStack không đảm bảo bền qua khởi động lại; ghi lại các bước khôi phục nếu phải `./stack.sh` lại). DevStack của Người 4 chạy trong máy ảo VirtualBox `devstack` (Ubuntu Server 24.04, nhánh `stable/2026.1`, mạng NAT, chuyển tiếp cổng 2222 cho SSH và 8080 cho Horizon).
 
-**Truy cập cho cả nhóm:** floating IP của DevStack mặc định chỉ thấy từ máy host. Cách mặc định: cài Tailscale trên máy host và quảng bá dải floating IP (subnet router), ví dụ `tailscale up --advertise-routes=172.24.4.0/24` rồi duyệt route trong trang quản trị Tailscale; các bạn khác cài Tailscale là vào được `http://<floating-ip>`. Kiểm tra lại cú pháp với tài liệu Tailscale hiện hành. Phương án khác: Cloudflare Tunnel chạy trên vm-app.
+**Truy cập cho cả nhóm:** floating IP của DevStack mặc định chỉ thấy từ máy host DevStack. Đã chốt dùng Tailscale (mục 23): cài Tailscale trên máy host DevStack của Người 4 và quảng bá dải floating IP (subnet router), ví dụ `tailscale up --advertise-routes=172.24.4.0/24` rồi duyệt route trong trang quản trị Tailscale; các bạn khác cài Tailscale là vào được `http://<floating-ip>`. Kiểm tra lại cú pháp với tài liệu Tailscale hiện hành.
 
 **Triển khai:**
 
@@ -825,7 +819,7 @@ Script: `infra/azure/setup.sh` (chạy từng khối, kiểm tra trên portal). 
 
 | Tài nguyên | Tên | Ghi chú |
 |---|---|---|
-| Resource group | `rg-phongtro` | Một vùng duy nhất, mặc định `southeastasia` |
+| Resource group | `rg-phongtro` | Một vùng duy nhất: `eastasia` (đã chốt, mục 23) |
 | Storage account | `stphongtro<SUFFIX>` | Container `public-images` (đọc công khai), `backups` (riêng tư); queue `ops-ticks` |
 | AI Search | `srch-phongtro-<SUFFIX>` | Gói Free; chỉ mục `rooms-public` |
 | Maps | `maps-phongtro-<SUFFIX>` | Gen2 |
@@ -877,8 +871,8 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 | `AZURE_BACKUP_SAS_WRITE`, `AZURE_BACKUP_SAS_READ` | backup.sh / restore-test.sh | ✓ | Tách quyền ghi và đọc |
 | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `KEEP_LOCAL` | scripts | ✓ / | |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | api, worker | ✓ | |
+| `TELEGRAM_BOT_NAME` | api (qua `/config`), worker | | Tên đăng nhập của bot, không có `@`; giá trị `easyrent2006_bot` |
 | `TELEGRAM_BOT_TOKEN` | worker | ✓ | |
-| `CONTENT_SAFETY_*`, `DOC_INTELLIGENCE_*` | api | ✓ | Tùy chọn |
 
 ---
 
@@ -970,14 +964,14 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 
 | Người | Mô-đun | Chức năng | Nghiệm thu (đạt khi) | Hạn |
 |---|---|---|---|---|
-| 1 | Quản lý, SPEC, dữ liệu mẫu, kiểm thử | – | SPEC chốt 13/11; seed nạp được; danh sách TC chạy đủ và ghi kết quả | 13/11, 23/11 |
-| 2 | Backend API | F01-F04, F06-F09, F11, F14, (F16-F20) | Mọi endpoint mục 10 cho M chạy trên VM; TC01-TC12 đạt | 16/11 lõi, 23/11 |
-| 2 | Worker (cùng 6) | F10, F12, phần chạy việc nền | TC13-TC16 đạt; đồng bộ dưới 15 giây | 19/11 |
-| 3 | Frontend | Giao diện cho F01-F09, F14 | Đi hết kịch bản demo không lỗi; dùng được trên điện thoại | 18/11, 23/11 |
-| 4 | OpenStack | Hạ tầng mục 13, cron sao lưu | `setup.sh` chạy xong; cả nhóm vào được web; snapshot có; TC19 đạt | 13/11, 16/11 |
-| 5 | Azure | Mục 11, 14, 17 | Chỉ mục tạo được; `ingest-room` chạy; Timer đưa tin vào hàng đợi; cảnh báo kích hoạt được | 16/11, 19/11 |
-| 6 | Tích hợp, kiểm thử hai cloud | F13, F15, (F21, F22) | TC17-TC22 đạt; có số đo thời gian đồng bộ, RTO, chi phí cho báo cáo | 23/11 |
-| 1 hoặc 6 | Thông báo, AI | F12, mục 3F, Logic App cảnh báo | Nhận được Telegram khi chạy `tick-now`; cảnh báo hệ thống tới nhóm | 21/11 |
+| 1 (Đặng Thế Đạt) | Quản lý, SPEC, dữ liệu mẫu, kiểm thử | – | SPEC chốt 13/11; seed nạp được; danh sách TC chạy đủ và ghi kết quả | 13/11, 23/11 |
+| 2 (Dương Hoàng Anh) | Backend API | F01-F04, F06-F09, F11, F14, (F16, F17) | Mọi endpoint mục 10 cho M chạy trên VM; TC01-TC12 đạt | 16/11 lõi, 23/11 |
+| 2 (Dương Hoàng Anh) | Worker (cùng 6) | F10, F12, phần chạy việc nền | TC13-TC16 đạt; đồng bộ dưới 15 giây | 19/11 |
+| 3 (Nguyễn Tiến Đạt) | Frontend | Giao diện cho F01-F09, F14 | Đi hết kịch bản demo không lỗi; dùng được trên điện thoại | 18/11, 23/11 |
+| 4 (Vũ Tuấn Anh) | OpenStack | Hạ tầng mục 13, cron sao lưu | `setup.sh` chạy xong; cả nhóm vào được web; snapshot có; TC19 đạt | 13/11, 16/11 |
+| 5 (Trịnh Thị Vân) | Azure | Mục 11, 14, 17 | Chỉ mục tạo được; `ingest-room` chạy; Timer đưa tin vào hàng đợi; cảnh báo kích hoạt được | 16/11, 19/11 |
+| 6 (Phạm Nguyễn Thu Giang) | Tích hợp, kiểm thử hai cloud | F13, F15 | TC17-TC22 đạt; có số đo thời gian đồng bộ, RTO, chi phí cho báo cáo | 23/11 |
+| 1 (Đặng Thế Đạt) | Thông báo Telegram, Logic App cảnh báo | F12, mục 3F, F15 (Logic App) | Nhận được Telegram khi chạy `tick-now`; cảnh báo hệ thống tới nhóm | 21/11 |
 
 ---
 
@@ -1010,16 +1004,16 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 
 ---
 
-## 23. Quyết định còn mở (chốt ngày 13/11)
+## 23. Quyết định đã chốt
 
-- [ ] Xác nhận công nghệ mục 5 (React + FastAPI + PostgreSQL), hoặc đổi.
-- [ ] Danh sách trường và tọa độ chính xác cho bảng `schools`.
-- [ ] Vùng Azure dùng chung (mặc định `southeastasia`, kiểm tra có đủ AI Search Free, Maps, Functions).
-- [ ] Người phụ trách Thông báo và AI: Người 1 hay Người 6.
-- [ ] Làm F18-F22 hay không.
-- [ ] Giá trị `EST_*` mặc định cho chi phí thực tế.
-- [ ] Cách cả nhóm truy cập OpenStack: Tailscale hay Cloudflare Tunnel.
-- [ ] Nơi lưu thông tin tài khoản dùng chung.
+- [x] Xác nhận công nghệ mục 5: Giữ nguyên React 18 (Vite + Tailwind) + FastAPI + PostgreSQL 16 + MinIO.
+- [x] Danh sách trường và tọa độ chính xác cho bảng `schools`: Giữ nguyên dữ liệu trường mặc định trong `seed/seed.sql`.
+- [x] Vùng Azure dùng chung: Chốt dùng **`eastasia`** cho toàn bộ tài nguyên trong `rg-phongtro`.
+- [x] Người phụ trách Thông báo và AI: **Người 1 (Nhóm trưởng)** phụ trách chính phần Thông báo Telegram (F12, mục 3F: xử lý liên kết tài khoản và nhắc lịch xem phòng) và cấu hình Logic App cảnh báo hệ thống (F15).
+- [x] Làm F18-F22 hay không: **Không làm F18–F22** (bỏ toàn bộ các chức năng mức C để tập trung hoàn thành chức năng mức M và S).
+- [x] Giá trị `EST_*` mặc định cho chi phí thực tế: `EST_KWH_PER_MONTH=100`, `EST_WATER_M3_PER_MONTH=4`, `EST_PEOPLE=1`, `EST_VEHICLES=1`.
+- [x] Cách cả nhóm truy cập OpenStack: Dùng **Tailscale** (subnet router quảng bá dải floating IP từ máy host DevStack của Người 4).
+- [x] Nơi lưu thông tin tài khoản dùng chung: Lưu trong tài liệu nội bộ riêng của nhóm (ngoài Git); bot Telegram dùng chung là `@easyrent2006_bot`.
 
 ---
 
@@ -1028,7 +1022,7 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 | Ngày | Mốc |
 |---|---|
 | 12/11 | Đăng ký nhóm và tổ hợp; kho mã và SPEC sẵn sàng |
-| 13/11 | Chốt mục 23; OpenStack có VM; mọi người chạy được `docker compose up -d db minio` với dữ liệu mẫu |
+| 13/11 | Mục 23 đã chốt; OpenStack có VM; mọi người chạy được `docker compose up -d db minio` với dữ liệu mẫu |
 | 16/11 | API lõi chạy local; Azure có Storage, AI Search + chỉ mục, Key Vault, Function |
 | 19/11 | **Mốc quyết định:** TC13 đạt thì làm tiếp; không thì thu hẹp theo phần rủi ro trong kế hoạch |
 | 23/11 | Đóng băng chức năng; TC01-TC22 đã chạy |
