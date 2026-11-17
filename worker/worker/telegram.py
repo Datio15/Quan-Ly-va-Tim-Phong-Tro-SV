@@ -13,6 +13,9 @@ from sqlalchemy import text
 from worker.db import engine
 
 log = logging.getLogger('worker.telegram')
+# httpx ghi URL ở mức INFO, mà URL Bot API chứa token: chỉ cho phép WARNING trở lên.
+for _name in ('httpx', 'httpcore'):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 API = 'https://api.telegram.org/bot%s/%s'
 _CODE = re.compile(r'[A-Za-z0-9_-]{8,64}')
@@ -34,10 +37,11 @@ def _token() -> str:
     return '' if t in ('', 'CHANGE_ME') else t
 
 
-def _call(method: str, timeout: float = 20, **params) -> dict:
+def _call(method: str, _http_timeout: float = 20, **params) -> dict:
+    # Tên _http_timeout để không trùng tham số `timeout` (long-poll) của getUpdates.
     """Gọi Bot API. Lỗi được đổi thành RuntimeError không chứa URL (URL có token)."""
     try:
-        r = httpx.post(API % (_token(), method), json=params, timeout=timeout)
+        r = httpx.post(API % (_token(), method), json=params, timeout=_http_timeout)
     except httpx.HTTPError as e:
         raise RuntimeError('telegram %s: %s' % (method, type(e).__name__)) from None
     try:
