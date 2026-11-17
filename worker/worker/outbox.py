@@ -116,7 +116,7 @@ def _build_public_document(db: Session, room_row: Any, image_urls: list[str]) ->
     vehicles = int(os.getenv("EST_VEHICLES", "1"))
 
     cost_res = db.execute(
-        text("SELECT total FROM room_monthly_cost(:rid, :kwh, :m3, :people, :vehicles)"),
+        text("SELECT total FROM room_monthly_cost(CAST(:rid AS uuid), CAST(:kwh AS numeric), CAST(:m3 AS numeric), CAST(:people AS integer), CAST(:vehicles AS integer))"),
         {"rid": room_id, "kwh": kwh, "m3": m3, "people": people, "vehicles": vehicles},
     ).scalar()
 
