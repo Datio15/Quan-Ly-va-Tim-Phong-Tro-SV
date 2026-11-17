@@ -56,10 +56,12 @@ services:
       start_period: 30s
 
   # Bỏ chú thích khi mô-đun worker sẵn sàng (Người 2, 6).
-  # worker:
-  #   build: ./worker
-  #   restart: unless-stopped
-  #   env_file: .env
+  worker:
+    build: ./worker
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
 
   web:
     build: ./frontend

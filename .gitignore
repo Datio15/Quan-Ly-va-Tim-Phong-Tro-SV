@@ -28,4 +28,4 @@ data/
 .DS_Store
 .idea/
 .vscode/
- 
+ worker/.venv/
