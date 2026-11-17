@@ -4,6 +4,7 @@ import signal
 import time
 from worker.outbox import process_sync_outbox
 from worker.queue import poll_ops_ticks_queue
+from worker import telegram
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,12 +19,6 @@ def _handle_shutdown(signum, frame):
     global RUNNING
     logger.info("Nhận tín hiệu dừng (%s), đang thoát vòng lặp...", signum)
     RUNNING = False
-
-
-def poll_telegram_updates() -> None:
-    logger.debug("[Telegram] Đang gọi getUpdates kiểm tra liên kết tài khoản...")
-    # TODO (Mục 3F): Gọi Telegram Bot API getUpdates, khớp mã /start <code_16_ky_tu>
-    # với users.telegram_link_code (còn hạn telegram_link_expires) để lưu telegram_chat_id
 
 
 def process_job_runs() -> None:
@@ -53,7 +48,7 @@ def main() -> None:
     tasks = {
         "outbox": process_sync_outbox,
         "queue": poll_ops_ticks_queue,
-        "telegram": poll_telegram_updates,
+        "telegram": telegram.poll_updates,
         "job_runs": process_job_runs,
         "heartbeat": emit_heartbeat,
     }
