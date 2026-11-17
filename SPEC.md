@@ -1,6 +1,6 @@
 # SPEC – Quản lý và tìm phòng trọ cho sinh viên (Azure + OpenStack)
 
-Phiên bản 0.3 · 12/11/2026 · Người giữ file: Người 1 (Đặng Thế Đạt, nhóm trưởng)
+Phiên bản 0.4 · 14/11/2026 · Người giữ file: Người 1 (Đặng Thế Đạt, nhóm trưởng)
 
 File này là **nguồn sự thật duy nhất** về kiến trúc, dữ liệu, API và quy ước. Khi nhờ AI sinh code, dán phần liên quan của file này (mục 0 chỉ rõ phần nào cho mô-đun nào). **Muốn đổi tên bảng, API hay luồng dữ liệu thì sửa file này trước, báo cả nhóm, rồi mới sửa code.**
 
@@ -20,17 +20,54 @@ File đi kèm (đã chạy thử, xem README):
 | `scripts/backup.sh`, `scripts/restore-test.sh` | Sao lưu mã hóa lên Azure Blob, khôi phục thử có đối chiếu |
 | `infra/openstack/setup.sh`, `cloud-init.yaml` | Dựng project, mạng, security group, VM, volume, floating IP |
 | `infra/azure/setup.sh` | Dựng Storage, AI Search + chỉ mục, Maps, Key Vault, App Insights, Function App |
+| `backend/app/`, `backend/tests/` | Backend API đã code (FastAPI), 21 kiểm thử gồm TC01–TC12 |
+| `frontend/` | Web đã code (React 18 + Vite + TypeScript + Tailwind), nginx proxy `/api/*` |
+| `azure-functions/function_app.py` | `ingest-room`, `tick-now`, `daily-ticks-morning`, `daily-ticks-backup` (mục 11) |
+| `LUU-Y.md`, `backend/README.md` | Cách chạy, tài khoản demo, lưu ý cổng và bảo mật của web |
 
 ### Thành viên
 
 | Người | Họ tên | Phụ trách |
 |---|---|---|
 | 1 | Đặng Thế Đạt (nhóm trưởng) | Quản lý, SPEC, dữ liệu mẫu, kiểm thử; Thông báo Telegram (F12, mục 3F); Logic App cảnh báo (F15) |
-| 2 | Dương Hoàng Anh | Backend API; worker (cùng Người 6) |
+| 2 | Dương Hoàng Anh | OpenStack (tiếp nhận từ Người 4 ngày 14/11) |
 | 3 | Nguyễn Tiến Đạt | Frontend |
-| 4 | Vũ Tuấn Anh | OpenStack |
-| 5 | Trịnh Thị Vân | Azure |
-| 6 | Phạm Nguyễn Thu Giang | Tích hợp, kiểm thử hai cloud; sao lưu (F13); worker (cùng Người 2) |
+| 4 | Vũ Tuấn Anh | Backend API và web trong repo EasyRent: bảo trì, sửa lỗi; bàn giao OpenStack cho Người 2 |
+| 5 | Trịnh Thị Vân | Azure, Azure Functions |
+| 6 | Phạm Nguyễn Thu Giang | Worker; tích hợp, kiểm thử hai cloud; sao lưu (F13) |
+
+### Mã nguồn chuẩn (từ v0.4)
+
+Backend API và web đã code xong phần lõi trong repo `Anh-cybersecurity/EasyRent` (thư mục `backend/`, `frontend/`; 21 kiểm thử, gồm TC01–TC12, đạt ở máy cá nhân). **Từ v0.4, mã này là bản chuẩn.** Chỗ nào SPEC v0.3 và mã khác nhau thì SPEC đã sửa theo mã (bảng dưới). Worker, Azure Functions và OpenStack viết theo SPEC này để khớp với web đã có, không sửa API của web nếu chưa sửa SPEC.
+
+### Hiện trạng ngày 14/11
+
+| Phần | Tình trạng |
+|---|---|
+| Backend API | Xong F01–F09, F11, F14, F16, F17 (phần api của F10, F12, F13); chưa chạy trên VM |
+| Web | Xong các trang ở mục 6; build thành công; chưa chạy trên VM |
+| Hạ tầng Azure | Đã kiểm đạt 14/11: Storage, AI Search + chỉ mục, Key Vault, Function App (chưa có hàm), Maps, Budget |
+| Azure Functions | Đang viết và deploy, hạn 15/11 (Người 5) |
+| Worker | Đang viết vòng outbox, hạn 15/11 (Người 6) |
+| OpenStack | VM chưa chạy được (lỗi cloud-init); Tailscale chưa ai cài; Người 2 tiếp nhận |
+| Telegram, Logic App | Chưa làm (Người 1) |
+
+### Thay đổi so với v0.3
+
+| Mục | Thay đổi | Lý do |
+|---|---|---|
+| Thành viên, 0, 2, 13, 21 | Người 2 chuyển sang OpenStack; worker do Người 6; Người 4 giữ backend và web đã code | Phân công lại 14/11 |
+| 5, 6 | Cấu trúc thư mục và trang web theo mã thật; chưa dùng Alembic | Theo mã |
+| 7, 9.3 | Lịch `confirmed`: hai bên thấy liên hệ của nhau; bỏ "lưu tìm kiếm" (F20 đã bỏ) | Theo mã |
+| 9.1 | Gửi duyệt cần nhà có tọa độ; `approve` duyệt ảnh mới của phòng đang công khai; `reject` gỡ phòng đang công khai | Theo mã |
+| 9.4, 15 | Ba biến mới: `CORS_ORIGINS`, `REVIEW_SKIP_BOOKING_CHECK`, `FORWARDED_ALLOW_IPS` | Theo mã |
+| 10.1 | Mã lỗi mới: `METHOD_NOT_ALLOWED`, `RATE_LIMITED`, `INTERNAL_ERROR`, `HTTP_ERROR`; header `X-Response-Time-Ms` | Theo mã |
+| 10.2 | Endpoint mới: `/images/{id}`, `/files/signed`, `GET /landlord/tenants/{id}/files/{kind}`, `GET /landlord/meter-readings`, `GET /admin/landlords`, lọc `pending_images`; body `resolve`; sao lưu trả 202 | Theo mã |
+| 10.4 | `/admin/system/status` thêm `outbox_failed_rows`, `recent_jobs` | Theo mã |
+| 11.1, 11.4 | Mã phản hồi của `ingest-room`; Timer tách hai hàm `daily-ticks-morning`, `daily-ticks-backup`; `tick-now` kiểm tra `type` | Mỗi hàm Timer chỉ có một lịch |
+| 12 | `daily_backup` tạo dòng `job_runs(job='backup')`; outbox tạm dừng khi chưa có khóa hàm | Bổ sung chi tiết |
+| 14 | Key Vault dùng **access policy** (v0.3 ghi nhầm RBAC); Maps vùng `global`; Function gói FC1; thêm bí mật `azure-maps-key`; Budget US$30 | Theo tài nguyên đã tạo |
+| 19 | api chỉ nhận request qua nginx; giới hạn đăng nhập trong bộ nhớ, api chạy `--workers 1` | Theo mã |
 
 ---
 
@@ -57,11 +94,11 @@ Việc cần làm: <mô tả cụ thể, kèm mã chức năng F.. và mã kiể
 
 | Mô-đun | Mục cần dán | File cần dán |
 |---|---|---|
-| Backend API (Người 2) | 2, 3, 7, 8, 9, 10, 19 | `schema.sql` |
-| Worker (Người 2, 6) | 3, 4, 11, 12, 16 | `schema.sql` (bảng sync_outbox, job_runs, notifications) |
+| Backend API (Người 4) | 2, 3, 7, 8, 9, 10, 19 | `schema.sql` |
+| Worker (Người 6) | 3, 4, 11, 12, 16 | `schema.sql` (bảng sync_outbox, job_runs, notifications) |
 | Frontend (Người 3) | 1, 7, 9, 10 | – |
 | Azure Functions (Người 5) | 3, 4, 11 | `search-index.json` |
-| OpenStack (Người 4) | 2, 13, 15, 16 | `infra/openstack/*` |
+| OpenStack (Người 2) | 2, 13, 15, 16, 19 | `infra/openstack/*` |
 | Thông báo Telegram, Logic App (Người 1) | 3C, 3F, 12, 17 | – |
 
 Không dán khóa, mật khẩu hay token thật vào khung chat với AI.
@@ -96,6 +133,8 @@ Nền tảng hai phía: **sinh viên** tìm và so sánh phòng trọ, biết ch
 | F16 | Khách thuê, hợp đồng (file giả), nhắc hợp đồng sắp hết hạn | S | 2, 3 |
 | F17 | Nhập chỉ số điện nước, tạo hóa đơn tháng, đánh dấu đã trả, nhắc quá hạn | S | 2, 3 |
 
+Cột "Người chính" giữ theo phân công ban đầu. Phân công hiện tại xem mục 21.
+
 **Ngoài phạm vi:** F18 đến F22 (hóa đơn PDF kèm VietQR, báo cáo doanh thu, lưu tiêu chí tìm, kiểm duyệt ảnh và đọc công tơ bằng AI; đã bỏ ở mục 23), thanh toán thật, gửi SMS, ứng dụng di động riêng, dữ liệu thật của người khác, cào dữ liệu từ trang khác.
 
 ---
@@ -122,7 +161,7 @@ Nền tảng hai phía: **sinh viên** tìm và so sánh phòng trọ, biết ch
             │                                                    │
  ┌──────────▼───────────────────────── Azure (public cloud) ─────┴───────────────┐
  │ Function ingest-room (HTTP) ──► AI Search: rooms-public                        │
- │ Blob public-images (ảnh công khai)      Function daily-ticks (Timer) ──► Queue  │
+ │ Blob public-images (ảnh công khai)      Function daily-ticks-* (Timer) ──► Queue│
  │ Blob backups (bản sao lưu mã hóa)       Storage Queue ops-ticks                 │
  │ Azure Maps (bản đồ, geocode)            Key Vault (khóa, mật khẩu sao lưu)     │
  │ Application Insights + Azure Monitor ──► Action Group ──► Logic Apps ──► Telegram│
@@ -135,11 +174,11 @@ Nền tảng hai phía: **sinh viên** tìm và so sánh phòng trọ, biết ch
 | Thành phần | Chạy ở | Cổng | Người |
 |---|---|---|---|
 | web (React + nginx) | vm-app, Docker | 80 | 3 |
-| api (FastAPI) | vm-app, Docker | 8000 (nội bộ) | 2 |
-| worker (Python) | vm-app, Docker | – | 2, 6 |
-| PostgreSQL 16 | vm-data, Docker | 5432 (chỉ từ sg-app) | 4 |
-| MinIO | vm-data, Docker | 9000 (chỉ từ sg-app), 9001 console | 4 |
-| Function `ingest-room`, `daily-ticks` | Azure Functions | HTTPS | 5 |
+| api (FastAPI) | vm-app, Docker | 8000 (nội bộ, không mở ra ngoài) | 4 |
+| worker (Python) | vm-app, Docker | – | 6 |
+| PostgreSQL 16 | vm-data, Docker | 5432 (chỉ từ sg-app) | 2 |
+| MinIO | vm-data, Docker | 9000 (chỉ từ sg-app), 9001 console | 2 |
+| Function `ingest-room`, `tick-now`, `daily-ticks-morning`, `daily-ticks-backup` | Azure Functions | HTTPS | 5 |
 | AI Search, Blob, Queue, Maps, Key Vault, App Insights | Azure | HTTPS | 5 |
 | Logic Apps (cảnh báo) | Azure | – | 1 |
 
@@ -157,7 +196,7 @@ Nền tảng hai phía: **sinh viên** tìm và so sánh phòng trọ, biết ch
 ### A. Đăng tin → tìm thấy trên Azure (F02, F03, F10)
 
 1. Chủ trọ tạo phòng (`status = draft`), nhập bảng giá, tiện nghi, tải ảnh.
-2. Chủ trọ bấm "Gửi duyệt" → `pending`. Quản trị duyệt → `published`, `published_at = now()`.
+2. Chủ trọ bấm "Gửi duyệt" → `pending` (nhà phải có tọa độ, mục 9.1). Quản trị duyệt → `published`, `published_at = now()`.
 3. Trong **cùng transaction** với bước 2 (và mọi lần sửa phòng đang công khai), api tăng `rooms.version` và chèn một dòng `sync_outbox(entity_type='room', entity_id, entity_version, op)`. `op = 'upsert'` nếu phòng đang `published`, ngược lại `'delete'`.
 4. worker (5 giây một lần) lấy các dòng đến hạn (mục 12.2), dựng tài liệu công khai từ `v_rooms_public` (không dùng `payload` cũ), đẩy ảnh mới lên Blob, gọi Function `ingest-room`.
 5. Function kiểm tra danh sách trường, so `version`, ghi vào AI Search.
@@ -175,7 +214,7 @@ Thời gian mục tiêu từ lúc duyệt đến lúc tìm thấy: **dưới 15 
 
 ### C. Nhắc việc: Azure hẹn giờ, OpenStack xử lý (F12, F16, F17)
 
-1. Function Timer `daily-ticks` chạy theo lịch (mục 11.4) và đưa tin vào Storage Queue `ops-ticks`, ví dụ `{"id":"...","type":"viewing_reminder","at":"..."}`. **Tin không chứa dữ liệu cá nhân.**
+1. Hai Function Timer `daily-ticks-morning` và `daily-ticks-backup` chạy theo lịch (mục 11.4) và đưa tin vào Storage Queue `ops-ticks`, ví dụ `{"id":"...","type":"viewing_reminder","at":"..."}`. **Tin không chứa dữ liệu cá nhân.**
 2. worker kéo hàng đợi 30 giây một lần, bỏ qua tin đã xử lý (`processed_messages`), chạy việc tương ứng **trên dữ liệu cục bộ**, gửi Telegram trực tiếp từ OpenStack, ghi `notifications` để không gửi trùng.
 3. Nội dung thông báo chỉ có thông tin tối thiểu (mục 12.4).
 
@@ -224,14 +263,14 @@ Lưu ý cho báo cáo: bản sao lưu tuy đã mã hóa vẫn là dữ liệu c�
 
 | Thành phần | Chọn | Ghi chú |
 |---|---|---|
-| Backend | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic 2 | Mật khẩu băm argon2 (`argon2-cffi`) hoặc bcrypt; JWT (`pyjwt`) |
-| CSDL | PostgreSQL 16 | `schema.sql` là bản đầu; thay đổi sau bằng Alembic |
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2, Pydantic 2 (chưa dùng Alembic) | Mật khẩu băm argon2 (`argon2-cffi`) hoặc bcrypt; JWT (`pyjwt`) |
+| CSDL | PostgreSQL 16 | `schema.sql` là nguồn duy nhất; muốn đổi CSDL thì sửa `schema.sql`, sửa SPEC và báo nhóm |
 | Kho file | MinIO (API S3) | Thư viện `minio` hoặc `boto3` |
 | Worker | Python 3.12, cùng mã nguồn mô hình với backend | `azure-storage-blob`, `azure-storage-queue`, `httpx` |
 | Frontend | React 18, Vite, TypeScript, React Router, TanStack Query | CSS: Tailwind (đã chốt, mục 23) |
 | Bản đồ | Azure Maps Web SDK v3 | Khóa riêng cho Maps |
 | Tìm kiếm | Azure AI Search, gói Free, API `2024-07-01` | `azure-search-documents` |
-| Hàm | Azure Functions, Python 3.11, mô hình lập trình v2 | Gói Flex Consumption (hoặc gói có sẵn trên tài khoản) |
+| Hàm | Azure Functions, Python 3.11, mô hình lập trình v2 | Gói Flex Consumption (FC1, đã tạo) |
 | Giám sát | `azure-monitor-opentelemetry` | Gửi số đo và trace |
 | Thông báo | Telegram Bot API (`sendMessage`, `getUpdates`) | Gọi từ worker trên OpenStack |
 | VM | Ubuntu 24.04 cloud image | Có sẵn `postgresql-client-16` khớp phiên bản máy chủ |
@@ -245,35 +284,35 @@ Lưu ý cho báo cáo: bản sao lưu tuy đã mã hóa vẫn là dữ liệu c�
 
 ```
 phongtro/
-├─ SPEC.md  README.md  docker-compose.yml  .env.example  .gitignore
+├─ SPEC.md  README.md  LUU-Y.md  docker-compose.yml  .env.example  .gitignore
 ├─ backend/
 │  ├─ Dockerfile
 │  ├─ db/schema.sql            # bản đầu của CSDL (đã chạy thử)
-│  ├─ alembic/                 # migration về sau
 │  ├─ app/
 │  │  ├─ main.py               # tạo FastAPI, gắn router, middleware đo thời gian
 │  │  ├─ config.py             # đọc biến môi trường (pydantic-settings)
 │  │  ├─ db.py                 # engine, session
 │  │  ├─ models/               # SQLAlchemy model theo schema.sql
 │  │  ├─ schemas/              # Pydantic request/response
-│  │  ├─ routers/              # auth, search, rooms, bookings, reviews, landlord, admin, me, health
-│  │  ├─ services/             # search_service (Azure + dự phòng), cost, outbox, storage, invoices
+│  │  ├─ routers/              # auth, public, rooms, bookings, landlord, landlord_ops, admin, health
+│  │  ├─ services/             # search_service (Azure + dự phòng), rooms_public, cost, outbox, storage, invoices
 │  │  ├─ security.py           # băm mật khẩu, JWT, phụ thuộc kiểm tra vai trò
 │  │  └─ seed_passwords.py     # đặt mật khẩu tài khoản demo từ SEED_DEMO_PASSWORD
-│  └─ tests/
+│  └─ tests/                   # test_api.py (TC01-TC12 và thêm), test_search_filter.py
 ├─ worker/
 │  ├─ Dockerfile
-│  └─ worker/                  # main.py (vòng lặp), outbox.py, queue.py, jobs/, telegram.py
+│  └─ worker/                  # main.py (vòng lặp), db.py, outbox.py, queue.py, telegram.py, jobs/
 ├─ frontend/
 │  ├─ Dockerfile  nginx.conf
 │  └─ src/
-│     ├─ pages/                # Search, RoomDetail, Compare, MyBookings, Favorites,
-│     │                        # landlord/*, admin/*, Login, Register, Profile
-│     ├─ components/           # RoomCard, FilterPanel, MapView, CostTable, ...
+│     ├─ pages/                # Search, RoomDetail, Compare, Bookings, Auth (Login, Register, Profile, Favorites),
+│     │                        # landlord/ (Houses, Rooms, RoomEdit, Tenants, Invoices),
+│     │                        # admin/ (Moderation, ReportsLandlords, SystemStatus)
+│     ├─ components/           # Layout, MapView, MapPicker, CostTable, ...
 │     └─ api/                  # client gọi /api/v1
 ├─ azure-functions/
 │  ├─ search-index.json
-│  ├─ function_app.py          # ingest-room (HTTP), daily-ticks (Timer)
+│  ├─ function_app.py          # ingest-room, tick-now (HTTP); daily-ticks-morning, daily-ticks-backup (Timer)
 │  └─ requirements.txt  host.json
 ├─ infra/
 │  ├─ openstack/setup.sh  cloud-init.yaml
@@ -283,6 +322,25 @@ phongtro/
 └─ docs/                       # ảnh chụp, kết quả đo, ghi chú cho báo cáo
 ```
 
+### Trang web (theo `frontend/src/App.tsx`)
+
+| Đường dẫn | Trang | Vai trò |
+|---|---|---|
+| `/` | Tìm phòng: bộ lọc, danh sách, bản đồ | Mọi người |
+| `/rooms/:id` | Chi tiết phòng, bản đồ, chi phí thực tế, đánh giá, đặt lịch | Mọi người (đặt lịch, đánh giá: sinh viên) |
+| `/compare` | So sánh 2–3 phòng | Mọi người |
+| `/login`, `/register` | Đăng nhập, đăng ký | Khách |
+| `/profile` | Hồ sơ, liên kết Telegram | Đã đăng nhập |
+| `/favorites` | Yêu thích | Sinh viên |
+| `/bookings` | Lịch xem phòng | Sinh viên, chủ trọ |
+| `/landlord/houses` | Nhà, đặt ghim tọa độ trên bản đồ | Chủ trọ |
+| `/landlord/rooms`, `/landlord/rooms/:id` | Danh sách phòng; sửa phòng, bảng giá, tiện nghi, ảnh, gửi duyệt | Chủ trọ |
+| `/landlord/tenants` | Khách thuê, file CCCD và hợp đồng GIẢ | Chủ trọ |
+| `/landlord/invoices` | Chỉ số điện nước, hóa đơn | Chủ trọ |
+| `/admin/moderation` | Duyệt tin, duyệt ảnh mới | Quản trị |
+| `/admin/reports`, `/admin/landlords` | Xử lý báo cáo; xác minh chủ trọ | Quản trị |
+| `/admin/system` | Trạng thái hệ thống, đồng bộ lại, sao lưu, khôi phục thử | Quản trị |
+
 ---
 
 ## 7. Vai trò và quyền
@@ -290,12 +348,13 @@ phongtro/
 | Hành động | Khách | Sinh viên | Chủ trọ | Quản trị |
 |---|:-:|:-:|:-:|:-:|
 | Tìm, xem phòng công khai, so sánh, xem chi phí | ✓ | ✓ | ✓ | ✓ |
-| Yêu thích, lưu tìm kiếm, đặt lịch xem, đánh giá, báo cáo | | ✓ | | |
+| Yêu thích, đặt lịch xem, đánh giá, báo cáo | | ✓ | | |
 | Hủy lịch của mình | | ✓ | | |
 | Quản lý nhà, phòng, ảnh, bảng giá **của mình** | | | ✓ | |
 | Xác nhận/từ chối lịch xem phòng **của mình** | | | ✓ | |
+| Xem liên hệ của bên kia khi lịch đã `confirmed` (mục 9.3) | | ✓ | ✓ | |
 | Khách thuê, chỉ số, hóa đơn **của mình** | | | ✓ | |
-| Duyệt tin, xác minh chủ trọ, ẩn đánh giá, xử lý báo cáo | | | | ✓ |
+| Duyệt tin và ảnh, gỡ tin đang công khai, xác minh chủ trọ, ẩn đánh giá, xử lý báo cáo | | | | ✓ |
 | Trang trạng thái, đồng bộ lại, sao lưu, khôi phục thử | | | | ✓ |
 
 Mọi API của chủ trọ phải kiểm tra **quyền sở hữu** (`houses.landlord_id = người đang đăng nhập`), không chỉ vai trò. Truy cập tài nguyên của người khác trả `404` (không lộ là có tồn tại).
@@ -358,6 +417,8 @@ draft ──gửi duyệt──► pending ──duyệt──► published ◄�
 - Sửa phòng đang `published`: giữ `published`, tăng `version`, ghi outbox `upsert`. Ảnh mới thêm vẫn qua kiểm duyệt riêng (`room_images.moderation`).
 - Chuyển khỏi `published` (ẩn, bị từ chối): ghi outbox `delete`.
 - Từ chối phải có `reject_reason`.
+- Gửi duyệt yêu cầu nhà đã có tọa độ (`lat`, `lng`); thiếu thì `422 VALIDATION_ERROR`. Lý do: tìm theo khoảng cách và bản đồ cần tọa độ.
+- Quản trị gỡ phòng đang `published` bằng `reject` (ghi outbox `delete`). Gọi `approve` trên phòng đang `published` chỉ duyệt các ảnh mới đang chờ, phòng giữ `published`.
 
 ### 9.2 Khi nào ghi `sync_outbox`
 
@@ -375,10 +436,11 @@ requested ──chủ trọ xác nhận──► confirmed ──sau giờ hẹn
 - Hai lịch `requested/confirmed` trùng phòng và giờ → `409 BOOKING_CONFLICT` (do chỉ mục duy nhất trong CSDL).
 - Mỗi sinh viên tối đa 3 lịch `requested` cùng lúc.
 - Nhắc lịch: lúc 08:00 mỗi ngày gửi cho các lịch `confirmed` trong 24 giờ tới (một lần, ghi `reminded_at`).
+- Khi lịch ở `confirmed`: sinh viên thấy số nhà, ngõ (`houses.address_private`), tên và số điện thoại chủ trọ; chủ trọ thấy tên và số điện thoại sinh viên. Dữ liệu này chỉ trả qua api trong OpenStack, không bao giờ vào tài liệu gửi Azure hay tin Telegram.
 
 ### 9.4 Đánh giá
 
-Sinh viên đánh giá được phòng khi có ít nhất một lịch `done` với phòng đó (để demo, quản trị có thể bật cờ bỏ qua điều kiện này). Mỗi sinh viên một đánh giá mỗi phòng (sửa được). `rating_avg` làm tròn 1 chữ số, chỉ tính đánh giá không bị ẩn.
+Sinh viên đánh giá được phòng khi có ít nhất một lịch `done` với phòng đó (để demo, đặt `REVIEW_SKIP_BOOKING_CHECK=true` trong `.env` để bỏ qua điều kiện này). Mỗi sinh viên một đánh giá mỗi phòng (sửa được). `rating_avg` làm tròn 1 chữ số, chỉ tính đánh giá không bị ẩn.
 
 ### 9.5 Chi phí thực tế mỗi tháng (F07)
 
@@ -423,6 +485,7 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 - Tiền tố `/api/v1`. JSON `snake_case`. Thời gian ISO 8601 có múi giờ (`2026-11-20T10:00:00+07:00`).
 - Xác thực: header `Authorization: Bearer <JWT>`. JWT chứa `sub` (user id), `role`, `exp`.
 - Phân trang: `page` (từ 1), `page_size` (mặc định 20, tối đa 50). Trả `{ "items": [...], "page": 1, "page_size": 20, "total": 57 }`.
+- Mọi phản hồi có header `X-Response-Time-Ms` (thời gian xử lý ở api).
 - Lỗi: mã HTTP chuẩn và thân
 
 ```json
@@ -431,7 +494,7 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 
 | Mã lỗi | HTTP | Khi nào |
 |---|---|---|
-| `VALIDATION_ERROR` | 422 | Dữ liệu vào sai định dạng |
+| `VALIDATION_ERROR` | 422 | Dữ liệu vào sai định dạng; `details.fields` liệt kê trường sai |
 | `UNAUTHORIZED` | 401 | Thiếu hoặc sai token |
 | `FORBIDDEN` | 403 | Sai vai trò |
 | `NOT_FOUND` | 404 | Không có, hoặc không thuộc quyền sở hữu |
@@ -441,7 +504,11 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | `ROOM_NOT_PUBLISHED` | 409 | Thao tác cần phòng công khai |
 | `INVALID_TRANSITION` | 409 | Chuyển trạng thái không hợp lệ (mục 9) |
 | `INVOICE_EXISTS` | 409 | Hóa đơn tháng đã tạo |
+| `METHOD_NOT_ALLOWED` | 405 | Sai phương thức HTTP |
+| `RATE_LIMITED` | 429 | Quá 10 lần đăng nhập mỗi phút từ một IP |
+| `INTERNAL_ERROR` | 500 | Lỗi không lường trước; không trả chi tiết lỗi cho người dùng |
 | `UPSTREAM_UNAVAILABLE` | 503 | Dịch vụ Azure cần thiết không phản hồi (trừ tìm kiếm, vốn có dự phòng) |
+| `HTTP_ERROR` | khác | Mã HTTP khác không có trong bảng |
 
 ### 10.2 Danh sách endpoint
 
@@ -467,11 +534,13 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | GET | /rooms/{id}/cost | Khách | Chi phí thực tế; query `kwh, m3, people, vehicles` |
 | POST | /rooms/compare | Khách | Body `{"ids":[...2-3], "school_id"?}` |
 | GET | /rooms/{id}/reviews | Khách | Đánh giá (phân trang) |
+| GET | /images/{image_id} | Khách | Ảnh phòng đã duyệt, đọc từ MinIO `public-src` khi ảnh chưa có `public_url` trên Blob; ảnh bị từ chối trả 404 |
+| GET | /files/signed?token=... | Người có link | Trả file CCCD hoặc hợp đồng GIẢ từ bucket `private`; link do api cấp, hạn 5 phút |
 | PUT | /rooms/{id}/review | Sinh viên | Tạo hoặc sửa đánh giá của mình |
 | POST | /reports | Sinh viên | Báo cáo phòng/đánh giá |
 | GET, PUT, DELETE | /favorites, /favorites/{room_id} | Sinh viên | Yêu thích |
 | POST | /bookings | Sinh viên | Đặt lịch |
-| GET | /bookings | Sinh viên, Chủ trọ | Lịch của tôi (chủ trọ: lịch các phòng của mình); lọc `status` |
+| GET | /bookings | Sinh viên, Chủ trọ | Lịch của tôi (chủ trọ: lịch các phòng của mình); lọc `status`; lịch `confirmed` kèm liên hệ hai bên (mục 9.3) |
 | POST | /bookings/{id}/confirm, /decline, /cancel, /done | Theo mục 9.3 | Chuyển trạng thái |
 
 **Chủ trọ** (tiền tố `/landlord`, chỉ dữ liệu của chính mình)
@@ -488,7 +557,8 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | GET, POST | /tenants | Khách thuê (S) |
 | PATCH | /tenants/{id} | Sửa, kết thúc thuê (S) |
 | POST | /tenants/{id}/files | Tải CCCD/hợp đồng GIẢ vào bucket private (S) |
-| POST | /meter-readings | Nhập chỉ số tháng (S) |
+| GET | /tenants/{id}/files/{kind} | `kind` là `id_card` hoặc `contract`; trả link `/api/v1/files/signed?token=...` hạn 5 phút (S) |
+| GET, POST | /meter-readings | Xem chỉ số đã nhập (lọc `room_id`), nhập chỉ số tháng (S) |
 | POST | /invoices/generate | Body `{"month":"2026-10"}`: tạo hóa đơn cho mọi khách đang thuê (S) |
 | GET | /invoices | Lọc `month`, `status` (S) |
 | POST | /invoices/{id}/paid | Đánh dấu đã trả (S) |
@@ -497,15 +567,17 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 
 | Method | Path | Mô tả |
 |---|---|---|
-| GET | /rooms?status=pending | Tin chờ duyệt (kèm ảnh) |
-| POST | /rooms/{id}/approve | Duyệt; body `{"image_ids_ok":[...]}` tùy chọn |
-| POST | /rooms/{id}/reject | Body `{"reason":"..."}` |
+| GET | /rooms?status=pending | Tin theo trạng thái (mặc định `pending`), kèm ảnh; thêm `pending_images=true` để lấy phòng có ảnh mới chờ duyệt |
+| POST | /rooms/{id}/approve | Duyệt `pending` → `published`; với phòng `published` chỉ duyệt ảnh mới. Body `{"image_ids_ok":[...]}` tùy chọn: ảnh không có trong danh sách bị từ chối; không gửi body thì duyệt mọi ảnh chờ |
+| POST | /rooms/{id}/reject | Body `{"reason":"..."}`; dùng cho phòng `pending`, hoặc gỡ phòng `published` |
+| GET | /landlords | Danh sách chủ trọ để xác minh |
 | POST | /landlords/{id}/verify, /unverify | Nhãn đã xác minh |
-| GET | /reports, POST /reports/{id}/resolve | Xử lý báo cáo; có thể ẩn đánh giá |
+| GET | /reports | Danh sách báo cáo |
+| POST | /reports/{id}/resolve | Body `{"action": "resolve", "hide_review": false}`; `action` là `resolve` hoặc `dismiss`; `hide_review: true` ẩn đánh giá bị báo cáo |
 | GET | /system/status | Trạng thái (10.4) |
 | POST | /sync/resync | Body `{"room_id": "..."}` hoặc `{}` = mọi phòng công khai |
-| POST | /backup/run | Tạo dòng `job_runs(job='backup', status='queued')`, trả `job_run_id`; worker chạy `backup.sh` |
-| POST | /backup/restore-test | Tạo dòng `job_runs(job='restore_test', status='queued')`, trả `job_run_id` |
+| POST | /backup/run | Tạo dòng `job_runs(job='backup', status='queued')`, trả `202` kèm `job_run_id`; worker chạy `backup.sh` |
+| POST | /backup/restore-test | Tạo dòng `job_runs(job='restore_test', status='queued')`, trả `202` kèm `job_run_id` |
 | GET | /jobs/{id} | Kết quả một lần chạy |
 
 **Hạ tầng**
@@ -562,6 +634,8 @@ GET /api/v1/search/rooms?q=gác lửng&price_max=3500000&amenities=dieu_hoa&scho
 ```
 
 Header trả về: `X-Search-Source: azure` hoặc `db`.
+
+`thumbnail_url` là URL Blob khi ảnh đã đồng bộ; ảnh chưa đồng bộ thì là `/api/v1/images/{image_id}`.
 
 ### 10.4 Ví dụ các API khác
 
@@ -638,7 +712,9 @@ GET /api/v1/admin/system/status
   "queue": { "last_message_at": "2026-11-20T08:00:03+07:00" },
   "backup": { "last_success_at": "2026-11-20T02:00:41+07:00", "size_bytes": 30944, "duration_ms": 606 },
   "restore_test": { "last_at": "2026-11-20T09:30:00+07:00", "total_ms": 1018, "counts_match": true },
-  "search_fallback_last_hour": 0
+  "search_fallback_last_hour": 0,
+  "outbox_failed_rows": [ { "id": 12, "room_id": "...", "op": "upsert", "attempts": 10, "last_error": "...", "created_at": "..." } ],
+  "recent_jobs": [ "... 15 lần chạy gần nhất trong job_runs ..." ]
 }
 ```
 
@@ -661,6 +737,7 @@ GET /api/v1/admin/system/status
   2. Đọc tài liệu hiện có theo `id`; nếu `version` hiện có ≥ `version` gửi đến → `200 {"status":"skipped"}` (idempotent).
   3. `upsert` → `merge_or_upload_documents`; `delete` → `delete_documents`.
   4. Trả `200 {"status":"ok"}`. Lỗi AI Search → `502`, worker sẽ thử lại.
+- Phản hồi lỗi khác: JSON hỏng → `400 INVALID_JSON`; thiếu `op`, `room.id` hoặc `room.version` → `400 INVALID_BODY`; thiếu hoặc sai khóa hàm → `401`. Thân lỗi dạng `{"error": "FIELD_NOT_ALLOWED", "fields": ["phone"]}`.
 - `location` gửi dạng GeoJSON: `{"type":"Point","coordinates":[lng, lat]}`.
 - Khóa admin của AI Search lấy từ app setting tham chiếu Key Vault, không nằm trong code.
 
@@ -697,14 +774,16 @@ Chú ý: trong `POINT(...)` kinh độ đứng trước vĩ độ. Chuỗi trong
 
 **Tìm kiếm dự phòng** dùng cùng bộ lọc trên `v_rooms_public` (`ILIKE` cho `q`, `@>` cho tiện nghi, `distance_m()` cho khoảng cách) và trả cùng định dạng (không có `facets` thì trả mảng rỗng).
 
-### 11.4 Function `daily-ticks` (Timer) và hàng đợi `ops-ticks`
+### 11.4 Function Timer `daily-ticks-*` và hàng đợi `ops-ticks`
 
 Lịch NCRONTAB tính theo **UTC** (UTC+7 trừ 7 giờ):
 
-| Lịch | Giờ Việt Nam | Tin đưa vào hàng đợi |
-|---|---|---|
-| `0 0 1 * * *` | 08:00 | `viewing_reminder`, `invoice_due_check`, `contract_expiring` |
-| `0 0 19 * * *` | 02:00 | `daily_backup` (dự phòng nếu cron trên vm-data hỏng) |
+| Hàm | Lịch | Giờ Việt Nam | Tin đưa vào hàng đợi |
+|---|---|---|---|
+| `daily-ticks-morning` | `0 0 1 * * *` | 08:00 | `viewing_reminder`, `invoice_due_check`, `contract_expiring` |
+| `daily-ticks-backup` | `0 0 19 * * *` | 02:00 | `daily_backup` (dự phòng nếu cron trên vm-data hỏng) |
+
+Mỗi hàm Timer chỉ khai báo được một lịch, nên hai lịch là hai hàm dùng chung một hàm phụ đưa tin. Function ghi hàng đợi bằng chuỗi kết nối `AzureWebJobsStorage` (cùng tài khoản `stphongtro<SUFFIX>`).
 
 Định dạng tin (JSON thuần, ghi bằng `QueueClient` của SDK, không mã hóa base64):
 
@@ -712,7 +791,7 @@ Lịch NCRONTAB tính theo **UTC** (UTC+7 trừ 7 giờ):
 { "id": "3f6c...-uuid", "type": "viewing_reminder", "at": "2026-11-21T01:00:00Z" }
 ```
 
-Để demo không phải chờ đến 8 giờ: Function có thêm route HTTP `POST /api/tick-now?type=viewing_reminder` (khóa hàm) đưa ngay một tin vào hàng đợi.
+Để demo không phải chờ đến 8 giờ: Function có thêm route HTTP `POST /api/tick-now?type=viewing_reminder` (khóa hàm) đưa ngay một tin vào hàng đợi. `type` chỉ nhận `viewing_reminder`, `invoice_due_check`, `contract_expiring`, `daily_backup`; sai thì `400 INVALID_TYPE`. Thành công trả `{"status": "queued", "type": "...", "id": "..."}`.
 
 ### 11.5 Azure Maps
 
@@ -735,6 +814,10 @@ Lịch NCRONTAB tính theo **UTC** (UTC+7 trừ 7 giờ):
 | Heartbeat | 60 s | Số đo `worker_heartbeat` |
 
 Mỗi việc bọc trong `try/except`, lỗi một việc không làm dừng việc khác.
+
+- Khi `AZURE_FUNCTION_KEY` trống hoặc còn `CHANGE_ME`, vòng outbox tạm dừng và ghi một dòng cảnh báo, không tăng `attempts` của dòng nào.
+- Tin `daily_backup` tạo dòng `job_runs(job='backup', status='queued')` để vòng lệnh quản trị chạy `backup.sh`. Ràng buộc `job_runs.job` không có giá trị `daily_backup`.
+- Trong gói `worker`, file `queue.py` import dạng `from . import queue as ops_queue`, không `import queue` (trùng tên thư viện chuẩn).
 
 ### 12.2 Thuật toán outbox
 
@@ -779,7 +862,7 @@ Không đưa số điện thoại, CCCD hay địa chỉ chi tiết vào tin nh�
 
 ---
 
-## 13. Hạ tầng OpenStack (Người 4)
+## 13. Hạ tầng OpenStack (Người 2, tiếp nhận từ Người 4)
 
 Script: `infra/openstack/setup.sh` (chạy lại được nhiều lần). Mặc định:
 
@@ -794,9 +877,11 @@ Script: `infra/openstack/setup.sh` (chạy lại được nhiều lần). Mặc 
 | Volume | `vol-data` 20 GB gắn vào `vm-data`, mount `/srv/data` |
 | Snapshot | `openstack volume snapshot create --volume vol-data --force snap-vol-data-<ngày>` mỗi tối và trước mỗi lần demo |
 
-**Máy host:** cần tối thiểu 16 GB RAM cho DevStack và 2 VM 3 GB. Chạy liên tục đến 30/11, tắt chế độ ngủ, sao lưu ảnh đĩa máy host sau khi dựng xong (DevStack không đảm bảo bền qua khởi động lại; ghi lại các bước khôi phục nếu phải `./stack.sh` lại). DevStack của Người 4 chạy trong máy ảo VirtualBox `devstack` (Ubuntu Server 24.04, nhánh `stable/2026.1`, mạng NAT, chuyển tiếp cổng 2222 cho SSH và 8080 cho Horizon).
+**Máy host:** cần tối thiểu 16 GB RAM cho DevStack và 2 VM 3 GB. Chạy liên tục đến 30/11, tắt chế độ ngủ, sao lưu ảnh đĩa máy host sau khi dựng xong (DevStack không đảm bảo bền qua khởi động lại; ghi lại các bước khôi phục nếu phải `./stack.sh` lại). DevStack ban đầu chạy trong máy ảo VirtualBox `devstack` trên máy Người 4 (Ubuntu Server 24.04, nhánh `stable/2026.1`, mạng NAT, chuyển tiếp cổng 2222 cho SSH và 8080 cho Horizon). Người 2 ghi lại máy chạy DevStack mới vào đây khi chốt.
 
-**Truy cập cho cả nhóm:** floating IP của DevStack mặc định chỉ thấy từ máy host DevStack. Đã chốt dùng Tailscale (mục 23): cài Tailscale trên máy host DevStack của Người 4 và quảng bá dải floating IP (subnet router), ví dụ `tailscale up --advertise-routes=172.24.4.0/24` rồi duyệt route trong trang quản trị Tailscale; các bạn khác cài Tailscale là vào được `http://<floating-ip>`. Kiểm tra lại cú pháp với tài liệu Tailscale hiện hành.
+**Lỗi đã gặp (13/11):** cả hai VM hỏng ở bước cloud-init vì VM không ra được Internet nên không cài được gói. Trước khi tạo VM, kiểm tra NAT cho dải floating IP (MASQUERADE cho `172.24.4.0/24`) và thử `ping`/`apt update` từ một VM thử. Nếu máy host thiếu RAM, giảm `pt.small` xuống 2 GB. Phương án dự phòng (một VM chạy cả web và dữ liệu) quyết ở mốc 19/11.
+
+**Truy cập cho cả nhóm:** floating IP của DevStack mặc định chỉ thấy từ máy host DevStack. Đã chốt dùng Tailscale (mục 23; ngày 14/11 chưa ai cài): cài Tailscale trên máy host chạy DevStack và quảng bá dải floating IP (subnet router), ví dụ `tailscale up --advertise-routes=172.24.4.0/24` rồi duyệt route trong trang quản trị Tailscale; các bạn khác cài Tailscale là vào được `http://<floating-ip>`. Kiểm tra lại cú pháp với tài liệu Tailscale hiện hành.
 
 **Triển khai:**
 
@@ -809,6 +894,8 @@ git clone <repo> && cd phongtro && cp .env.example .env   # DB_HOST, MINIO_ENDPO
 docker compose up -d --build api worker web
 ```
 
+sg-app chỉ mở 80/443, không mở 8000: mọi request vào api phải đi qua nginx của web (mục 19). Dịch vụ `worker` trong `docker-compose.yml` do Người 6 bật khi xong khung worker.
+
 Cron trên vm-data: `0 2 * * * cd /home/ubuntu/phongtro && set -a && . ./.env && set +a && scripts/backup.sh >> /var/log/phongtro-backup.log 2>&1`
 
 ---
@@ -819,15 +906,15 @@ Script: `infra/azure/setup.sh` (chạy từng khối, kiểm tra trên portal). 
 
 | Tài nguyên | Tên | Ghi chú |
 |---|---|---|
-| Resource group | `rg-phongtro` | Một vùng duy nhất: `eastasia` (đã chốt, mục 23) |
+| Resource group | `rg-phongtro` | Vùng `eastasia` cho mọi tài nguyên (đã chốt, mục 23), trừ Maps |
 | Storage account | `stphongtro<SUFFIX>` | Container `public-images` (đọc công khai), `backups` (riêng tư); queue `ops-ticks` |
 | AI Search | `srch-phongtro-<SUFFIX>` | Gói Free; chỉ mục `rooms-public` |
-| Maps | `maps-phongtro-<SUFFIX>` | Gen2 |
-| Key Vault | `kv-phongtro-<SUFFIX>` | Phân quyền RBAC |
+| Maps | `maps-phongtro-<SUFFIX>` | Gói G2, vùng `global` (Maps không tạo được ở `eastasia`) |
+| Key Vault | `kv-phongtro-<SUFFIX>` | Phân quyền bằng **access policy** (không phải RBAC); cấp quyền bằng `az keyvault set-policy` |
 | Application Insights | `appi-phongtro` | |
-| Function App | `func-phongtro-<SUFFIX>` | Python 3.11; bật managed identity, cấp quyền đọc Key Vault |
+| Function App | `func-phongtro-<SUFFIX>` | Python 3.11, gói Flex Consumption (FC1); managed identity đã bật, có access policy `get` trên Key Vault |
 | Logic App | `logic-phongtro-alerts` | Nhận cảnh báo, gửi Telegram nhóm quản trị |
-| Budget | `budget-phongtro` | Cảnh báo ở 50%, 80%, 100% |
+| Budget | `budget-phongtro` | US$30/tháng, cảnh báo ở 50%, 80%, 100% |
 
 ### Bí mật trong Key Vault
 
@@ -837,6 +924,11 @@ Script: `infra/azure/setup.sh` (chạy từng khối, kiểm tra trên portal). 
 | `search-admin-key` | Function `ingest-room` | Chỉ Function dùng; VM chỉ có khóa truy vấn |
 | `function-key` | worker | Khóa của `ingest-room` |
 | `telegram-bot-token` | worker, Logic App | |
+| `azure-maps-key` | web (qua api `/config`) | Bản gốc của `AZURE_MAPS_KEY` |
+
+Quyền trên Key Vault (access policy) ngày 14/11: người tạo vault (toàn quyền), nhóm trưởng (get, list, set), Function App (get). Thêm người: `az keyvault set-policy -n kv-phongtro-<SUFFIX> --object-id <object-id> --secret-permissions get list`. Gán role RBAC không có tác dụng trên vault này.
+
+`infra/azure/setup.sh` (bản v0.4) đã khớp với tài nguyên thật: mặc định `LOC=eastasia`; tạo Key Vault với `--enable-rbac-authorization false` và cấp quyền bằng access policy; bật managed identity cho Function và cấp `get`; lưu `azure-maps-key`; in danh sách app settings để kiểm. Script dừng nếu `.env.azure` đã có nội dung (tránh sinh passphrase sao lưu mới), trừ khi đặt `FORCE=1`.
 
 Giới hạn đã biết (ghi vào báo cáo): vm-data giữ một bản `BACKUP_PASSPHRASE` trong `.env`; hệ thống thật nên dùng danh tính được quản lý thay cho khóa chép tay.
 
@@ -859,8 +951,11 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 | `SEED_DEMO_PASSWORD` | api (seed_passwords) | ✓ | Mật khẩu tài khoản demo |
 | `EST_KWH_PER_MONTH`, `EST_WATER_M3_PER_MONTH`, `EST_PEOPLE`, `EST_VEHICLES` | api, worker | | Giá trị mặc định cho chi phí |
 | `SEARCH_TIMEOUT_MS` | api | | Quá giờ → tìm bằng DB |
+| `CORS_ORIGINS` | api | | Để trống khi web và api cùng nguồn qua nginx; khi dev tách cổng ghi vd `http://localhost:5173` |
+| `REVIEW_SKIP_BOOKING_CHECK` | api | | `true` cho đánh giá không cần lịch `done` (chỉ để demo, mục 9.4) |
+| `FORWARDED_ALLOW_IPS` | api | | Dải mạng tin cậy gửi `X-Forwarded-For` (nginx); mặc định các dải nội bộ |
 | `OUTBOX_POLL_SECONDS`, `QUEUE_POLL_SECONDS`, `OUTBOX_MAX_ATTEMPTS` | worker | | |
-| `AZURE_FUNCTION_INGEST_URL` | worker | | |
+| `AZURE_FUNCTION_INGEST_URL` | worker | | `https://func-phongtro-<SUFFIX>.azurewebsites.net/api/ingest-room` |
 | `AZURE_FUNCTION_KEY` | worker | ✓ | |
 | `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX` | api | | |
 | `AZURE_SEARCH_QUERY_KEY` | api | ✓ | Chỉ đọc |
@@ -873,6 +968,8 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | api, worker | ✓ | |
 | `TELEGRAM_BOT_NAME` | api (qua `/config`), worker | | Tên đăng nhập của bot, không có `@`; giá trị `easyrent2006_bot` |
 | `TELEGRAM_BOT_TOKEN` | worker | ✓ | |
+
+`.env.example` bản v0.4 đã bỏ bốn biến `CONTENT_SAFETY_*`, `DOC_INTELLIGENCE_*` (F18–F22 đã bỏ), thêm `MINIO_SECURE`, ba biến của web ở trên, và điền sẵn `TELEGRAM_BOT_NAME=easyrent2006_bot`.
 
 ---
 
@@ -925,6 +1022,7 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 - Toàn bộ là dữ liệu giả: số điện thoại dạng `0000000xxx`, email `@example.com`, đường dẫn CCCD/hợp đồng trỏ tới file giả. Tọa độ trường là gần đúng (chốt danh sách trường ngày 13/11).
 - Ảnh phòng: tự chụp, ảnh có giấy phép cho phép dùng lại, hoặc ảnh minh họa tự tạo; ghi nguồn trong `docs/`. Không lấy ảnh từ trang đăng tin khác.
 - Người 1 bổ sung mô tả cho phong phú (giữ nguyên cấu trúc bảng).
+- Seed không có ảnh phòng. `pytest` của backend tạo thêm dữ liệu thử mỗi lần chạy, nên trước khi demo hoặc quay video phải nạp lại dữ liệu sạch (`LUU-Y.md` mục 7).
 
 ---
 
@@ -934,8 +1032,11 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 - Kiểm tra vai trò **và** quyền sở hữu ở mọi API (mục 7).
 - Giới hạn tần suất `/auth/login`: 10 lần/phút/IP.
 - Tải file: kiểm tra loại MIME và kích thước; tên đối tượng do server sinh (uuid), không dùng tên người dùng gửi.
-- File trong bucket `private` chỉ truy cập qua URL ký trước, hạn 5 phút, chỉ chủ trọ sở hữu xem được.
-- CORS chỉ cho nguồn của web. Không bật `debug` trên VM.
+- File trong bucket `private` chỉ truy cập qua link ký trước, hạn 5 phút, chỉ chủ trọ sở hữu xem được. api cấp link `/api/v1/files/signed?token=...` vì URL ký của MinIO trỏ vào IP nội bộ.
+- CORS mặc định không mở (`CORS_ORIGINS` trống) vì web và api cùng nguồn qua nginx. Không bật `debug` trên VM.
+- Trên VM, api chỉ nhận request qua nginx (sg-app không mở 8000). api tin header `X-Forwarded-For` từ dải `FORWARDED_ALLOW_IPS`; nếu api bị gọi thẳng, người dùng có thể giả IP để vượt giới hạn đăng nhập.
+- Giới hạn đăng nhập lưu trong bộ nhớ của tiến trình, nên api chạy `--workers 1`.
+- Trên VM thật tạo lại `JWT_SECRET` (`openssl rand -hex 32`), `DB_PASSWORD`, `MINIO_ROOT_PASSWORD`, `SEED_DEMO_PASSWORD`; không dùng lại giá trị ở máy cá nhân.
 - Soát mã AI sinh ra: không mật khẩu cứng, không bỏ kiểm tra quyền, không SQL ghép chuỗi, không ghi dữ liệu cá nhân vào log.
 - Che khóa, token, mật khẩu khi chụp màn hình và quay video.
 
@@ -965,11 +1066,11 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 | Người | Mô-đun | Chức năng | Nghiệm thu (đạt khi) | Hạn |
 |---|---|---|---|---|
 | 1 (Đặng Thế Đạt) | Quản lý, SPEC, dữ liệu mẫu, kiểm thử | – | SPEC chốt 13/11; seed nạp được; danh sách TC chạy đủ và ghi kết quả | 13/11, 23/11 |
-| 2 (Dương Hoàng Anh) | Backend API | F01-F04, F06-F09, F11, F14, (F16, F17) | Mọi endpoint mục 10 cho M chạy trên VM; TC01-TC12 đạt | 16/11 lõi, 23/11 |
-| 2 (Dương Hoàng Anh) | Worker (cùng 6) | F10, F12, phần chạy việc nền | TC13-TC16 đạt; đồng bộ dưới 15 giây | 19/11 |
-| 3 (Nguyễn Tiến Đạt) | Frontend | Giao diện cho F01-F09, F14 | Đi hết kịch bản demo không lỗi; dùng được trên điện thoại | 18/11, 23/11 |
-| 4 (Vũ Tuấn Anh) | OpenStack | Hạ tầng mục 13, cron sao lưu | `setup.sh` chạy xong; cả nhóm vào được web; snapshot có; TC19 đạt | 13/11, 16/11 |
-| 5 (Trịnh Thị Vân) | Azure | Mục 11, 14, 17 | Chỉ mục tạo được; `ingest-room` chạy; Timer đưa tin vào hàng đợi; cảnh báo kích hoạt được | 16/11, 19/11 |
+| 4 (Vũ Tuấn Anh) | Backend API (đã code) | F01-F04, F06-F09, F11, F14, F16, F17 | Mọi endpoint mục 10 chạy trên VM; TC01-TC12 đạt trên VM | 23/11 |
+| 3 (Nguyễn Tiến Đạt) | Frontend (đã code) | Giao diện cho F01-F09, F14 | Đi hết kịch bản demo không lỗi trên VM; dùng được trên điện thoại | 23/11 |
+| 2 (Dương Hoàng Anh) | OpenStack | Hạ tầng mục 13, cron sao lưu | 16/11: `setup.sh` chạy xong, VM ra được Internet. 19/11: cả nhóm vào được web qua Tailscale; snapshot có; TC19 đạt | 16/11, 19/11 |
+| 5 (Trịnh Thị Vân) | Azure, Azure Functions | Mục 11, 14, 17 | 4 hàm deploy; TC15 đạt; Timer đưa tin vào hàng đợi đúng lịch; cảnh báo kích hoạt được | 15/11, 19/11 |
+| 6 (Phạm Nguyễn Thu Giang) | Worker | F10, phần chạy việc nền của F12, F13 | Vòng outbox gửi được lên Azure (TC13, TC14, TC16); hàng đợi và lệnh quản trị chạy | 15/11 outbox, 19/11 |
 | 6 (Phạm Nguyễn Thu Giang) | Tích hợp, kiểm thử hai cloud | F13, F15 | TC17-TC22 đạt; có số đo thời gian đồng bộ, RTO, chi phí cho báo cáo | 23/11 |
 | 1 (Đặng Thế Đạt) | Thông báo Telegram, Logic App cảnh báo | F12, mục 3F, F15 (Logic App) | Nhận được Telegram khi chạy `tick-now`; cảnh báo hệ thống tới nhóm | 21/11 |
 
@@ -991,7 +1092,7 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 | TC10 | Đặt lịch quá khứ hoặc quá 14 ngày | 422 |
 | TC11 | Đánh giá rồi ẩn đánh giá | `rating_avg` cập nhật, outbox có dòng mới |
 | TC12 | Tạo hóa đơn tháng 10 hai lần | Lần hai 409 `INVOICE_EXISTS`; số điện = chênh lệch chỉ số |
-| TC13 | Duyệt một phòng mới | Tìm thấy trên Azure (header `azure`) trong 15 giây |
+| TC13 | Duyệt một phòng mới | Tìm thấy trên Azure (header `X-Search-Source: azure`) trong 15 giây |
 | TC14 | Kiểm tra tài liệu trong AI Search | Không có tên, điện thoại, email, `address_private` |
 | TC15 | Gửi thử tài liệu có trường `phone` thẳng vào `ingest-room` | 400 `FIELD_NOT_ALLOWED` |
 | TC16 | Chặn mạng ra của vm-app (hoặc đổi sai `AZURE_FUNCTION_INGEST_URL`), sửa 3 phòng, mở lại | Outbox giữ `pending`, thử lại tăng dần, gửi bù đủ khi mạng trở lại |
@@ -1012,8 +1113,13 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 - [x] Người phụ trách Thông báo và AI: **Người 1 (Nhóm trưởng)** phụ trách chính phần Thông báo Telegram (F12, mục 3F: xử lý liên kết tài khoản và nhắc lịch xem phòng) và cấu hình Logic App cảnh báo hệ thống (F15).
 - [x] Làm F18-F22 hay không: **Không làm F18–F22** (bỏ toàn bộ các chức năng mức C để tập trung hoàn thành chức năng mức M và S).
 - [x] Giá trị `EST_*` mặc định cho chi phí thực tế: `EST_KWH_PER_MONTH=100`, `EST_WATER_M3_PER_MONTH=4`, `EST_PEOPLE=1`, `EST_VEHICLES=1`.
-- [x] Cách cả nhóm truy cập OpenStack: Dùng **Tailscale** (subnet router quảng bá dải floating IP từ máy host DevStack của Người 4).
+- [x] Cách cả nhóm truy cập OpenStack: Dùng **Tailscale** (subnet router quảng bá dải floating IP từ máy host chạy DevStack).
 - [x] Nơi lưu thông tin tài khoản dùng chung: Lưu trong tài liệu nội bộ riêng của nhóm (ngoài Git); bot Telegram dùng chung là `@easyrent2006_bot`.
+- [x] (14/11) Lấy backend và web đã code (repo EasyRent) làm bản chuẩn; 9 điểm bổ sung trong `LUU-Y.md` mục 5 được duyệt và đã ghi vào SPEC.
+- [x] (14/11) Key Vault giữ phân quyền bằng access policy.
+- [x] (14/11) Azure Maps dùng vùng `global` (ngoại lệ duy nhất của quyết định `eastasia`).
+- [x] (14/11) Hai lịch Timer thành hai hàm `daily-ticks-morning`, `daily-ticks-backup`.
+- [x] (14/11) Người 2 chuyển sang OpenStack; worker do Người 6; Người 1 viết phần Telegram trong worker.
 
 ---
 
@@ -1023,8 +1129,10 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 |---|---|
 | 12/11 | Đăng ký nhóm và tổ hợp; kho mã và SPEC sẵn sàng |
 | 13/11 | Mục 23 đã chốt; OpenStack có VM; mọi người chạy được `docker compose up -d db minio` với dữ liệu mẫu |
-| 16/11 | API lõi chạy local; Azure có Storage, AI Search + chỉ mục, Key Vault, Function |
-| 19/11 | **Mốc quyết định:** TC13 đạt thì làm tiếp; không thì thu hẹp theo phần rủi ro trong kế hoạch |
+| 14/11 | Hạ tầng Azure kiểm đạt; SPEC v0.4 lấy web đã code làm chuẩn |
+| 15/11 | Azure Functions (4 hàm) chạy; worker gửi được outbox lên Azure |
+| 16/11 | TC13–TC16 đạt trên `docker compose` ở máy cá nhân với Azure thật (web + worker + Function); OpenStack có VM chạy được, VM ra được Internet (Người 2) |
+| 19/11 | **Mốc quyết định:** TC13 đạt thì làm tiếp; không thì thu hẹp theo phần rủi ro trong kế hoạch. OpenStack: web chạy trên VM và cả nhóm vào được qua Tailscale; chưa được thì dùng phương án dự phòng ở mục 13 |
 | 23/11 | Đóng băng chức năng; TC01-TC22 đã chạy |
 | 24-28/11 | Quay video, slide, ghép và duyệt báo cáo |
 | 29/11 | Nộp (sớm một ngày so với hạn 30/11) |
