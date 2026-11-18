@@ -94,7 +94,7 @@ export default function FilterPanel({
 
       <Section title="Diện tích & số người">
         <div className="grid grid-cols-2 gap-2">
-          <Input type="number" min={0} placeholder="Từ (m²)" value={f.area_min} onChange={(e) => set("area_min", e.target.value)} />
+          <Input type="number" min={0} step="any" placeholder="Từ (m²)" value={f.area_min} onChange={(e) => set("area_min", e.target.value)} />
           <Input type="number" min={1} max={20} placeholder="Số người" value={f.people} onChange={(e) => set("people", e.target.value)} />
         </div>
       </Section>

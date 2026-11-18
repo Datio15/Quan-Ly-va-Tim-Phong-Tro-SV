@@ -25,6 +25,36 @@ def _check_phone(v: str | None) -> str | None:
 
 Phone = Annotated[str | None, AfterValidator(_check_phone)]
 
+# ---------- Giới hạn giá trị (BE-01, BE-02 báo cáo QA 18/11) ----------
+# Cột tiền là integer (int4) và room_monthly_cost cộng các khoản: giới hạn để không tràn số và không có
+# giá trị phi thực tế. Diện tích numeric(6,1), chỉ số công tơ numeric(10,1): tối đa 1 chữ số thập phân.
+MAX_RENT = 100_000_000            # giá thuê / tháng
+MAX_DEPOSIT = 1_000_000_000       # tiền cọc
+MAX_KWH_RATE = 100_000            # đ/kWh
+MAX_M3_RATE = 1_000_000           # đ/m³
+MAX_PERSON_RATE = 10_000_000      # nước đ/người
+MAX_MONTHLY_FEE = 10_000_000      # internet, gửi xe/xe, dịch vụ
+YEAR_MIN, YEAR_MAX = 2000, 2100
+
+
+def _one_decimal(v: float) -> float:
+    if abs(v * 10 - round(v * 10)) > 1e-6:
+        raise ValueError("Tối đa 1 chữ số thập phân")
+    return round(v, 1)
+
+
+def _check_year(v: date) -> date:
+    if not YEAR_MIN <= v.year <= YEAR_MAX:
+        raise ValueError(f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
+    return v
+
+
+Area = Annotated[float, Field(ge=1, le=9999, allow_inf_nan=False), AfterValidator(_one_decimal)]
+MeterIndex = Annotated[float, Field(ge=0, le=99_999_999, allow_inf_nan=False), AfterValidator(_one_decimal)]
+SafeDate = Annotated[date, AfterValidator(_check_year)]
+Rent = Annotated[int, Field(gt=0, le=MAX_RENT)]
+Deposit = Annotated[int, Field(ge=0, le=MAX_DEPOSIT)]
+
 
 # ---------- Xác thực ----------
 class RegisterIn(StrictModel):
@@ -84,6 +114,8 @@ class BookingIn(StrictModel):
     def _aware(cls, v: datetime) -> datetime:
         if v.tzinfo is None:
             raise ValueError("Thời gian phải có múi giờ, vd 2026-11-21T16:00:00+07:00")
+        if not YEAR_MIN <= v.year <= YEAR_MAX:
+            raise ValueError(f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
         return v
 
 
@@ -115,26 +147,26 @@ class HousePatch(StrictModel):
 
 
 class CostRatesIn(StrictModel):
-    electricity_per_kwh: int = Field(default=0, ge=0)
+    electricity_per_kwh: int = Field(default=0, ge=0, le=MAX_KWH_RATE)
     water_mode: Literal["per_m3", "per_person"] = "per_m3"
-    water_per_m3: int = Field(default=0, ge=0)
-    water_per_person: int = Field(default=0, ge=0)
-    internet_per_month: int = Field(default=0, ge=0)
-    parking_per_vehicle: int = Field(default=0, ge=0)
-    service_per_month: int = Field(default=0, ge=0)
+    water_per_m3: int = Field(default=0, ge=0, le=MAX_M3_RATE)
+    water_per_person: int = Field(default=0, ge=0, le=MAX_PERSON_RATE)
+    internet_per_month: int = Field(default=0, ge=0, le=MAX_MONTHLY_FEE)
+    parking_per_vehicle: int = Field(default=0, ge=0, le=MAX_MONTHLY_FEE)
+    service_per_month: int = Field(default=0, ge=0, le=MAX_MONTHLY_FEE)
 
 
 class RoomIn(StrictModel):
     house_id: uuid.UUID
     title: str = Field(min_length=5, max_length=120)
     description: str = Field(default="", max_length=5000)
-    price_month: int = Field(gt=0)
-    deposit_amount: int = Field(default=0, ge=0)
-    area_m2: float = Field(gt=0, lt=100000)
+    price_month: Rent
+    deposit_amount: Deposit = 0
+    area_m2: Area
     floor: int | None = Field(default=None, ge=-5, le=200)
     max_people: int = Field(default=2, ge=1, le=20)
     curfew_time: time | None = None
-    available_from: date | None = None
+    available_from: SafeDate | None = None
     amenities: list[str] = Field(default_factory=list)
     cost_rates: CostRatesIn = Field(default_factory=CostRatesIn)
 
@@ -143,13 +175,13 @@ class RoomPatch(StrictModel):
     house_id: uuid.UUID | None = None
     title: str | None = Field(default=None, min_length=5, max_length=120)
     description: str | None = Field(default=None, max_length=5000)
-    price_month: int | None = Field(default=None, gt=0)
-    deposit_amount: int | None = Field(default=None, ge=0)
-    area_m2: float | None = Field(default=None, gt=0, lt=100000)
+    price_month: Rent | None = None
+    deposit_amount: Deposit | None = None
+    area_m2: Area | None = None
     floor: int | None = Field(default=None, ge=-5, le=200)
     max_people: int | None = Field(default=None, ge=1, le=20)
     curfew_time: time | None = None
-    available_from: date | None = None
+    available_from: SafeDate | None = None
     amenities: list[str] | None = None
     cost_rates: CostRatesIn | None = None
 
@@ -159,9 +191,9 @@ class TenantIn(StrictModel):
     full_name: str = Field(min_length=2, max_length=100)
     phone: Phone = None
     email: str | None = None
-    start_date: date
-    end_date: date | None = None
-    deposit_amount: int = Field(default=0, ge=0)
+    start_date: SafeDate
+    end_date: SafeDate | None = None
+    deposit_amount: Deposit = 0
     people_count: int = Field(default=1, ge=1, le=20)
     vehicle_count: int = Field(default=1, ge=0, le=20)
 
@@ -170,9 +202,9 @@ class TenantPatch(StrictModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=100)
     phone: Phone = None
     email: str | None = None
-    start_date: date | None = None
-    end_date: date | None = None
-    deposit_amount: int | None = Field(default=None, ge=0)
+    start_date: SafeDate | None = None
+    end_date: SafeDate | None = None
+    deposit_amount: Deposit | None = None
     people_count: int | None = Field(default=None, ge=1, le=20)
     vehicle_count: int | None = Field(default=None, ge=0, le=20)
     is_active: bool | None = None
@@ -185,14 +217,16 @@ def parse_month(v: str) -> date:
     if not MONTH_RE.match(v):
         raise ValueError("Tháng có dạng YYYY-MM")
     y, m = v.split("-")
+    if not YEAR_MIN <= int(y) <= YEAR_MAX:
+        raise ValueError(f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
     return date(int(y), int(m), 1)
 
 
 class MeterReadingIn(StrictModel):
     room_id: uuid.UUID
     month: str  # "2026-10" -> period = 2026-10-01
-    electricity_index: float = Field(ge=0)
-    water_index: float = Field(ge=0)
+    electricity_index: MeterIndex
+    water_index: MeterIndex
 
     @field_validator("month")
     @classmethod
