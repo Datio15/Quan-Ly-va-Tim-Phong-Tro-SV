@@ -13,6 +13,7 @@ RUN useradd --system --uid 10001 app && chown -R app /srv
 USER app
 
 EXPOSE 8000
-# Chờ CSDL, đặt mật khẩu demo (chỉ tài khoản chưa có mật khẩu), rồi chạy api.
+# Chờ CSDL, đặt mật khẩu demo (chỉ tài khoản chưa có mật khẩu), gắn ảnh mẫu một lần
+# (lỗi ở bước ảnh mẫu không chặn api), rồi chạy api.
 ENV FORWARDED_ALLOW_IPS=127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16
-CMD python -m app.seed_passwords && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1     --proxy-headers --forwarded-allow-ips "$FORWARDED_ALLOW_IPS"
+CMD python -m app.seed_passwords && (python -m app.seed_images || true) && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1     --proxy-headers --forwarded-allow-ips "$FORWARDED_ALLOW_IPS"

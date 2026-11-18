@@ -151,7 +151,8 @@ function Info({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function BookingModal({ open, onClose, roomId }: { open: boolean; onClose: () => void; roomId: string }) {
-  const [slot, setSlot] = useState(vnInputValue(26).slice(0, 14) + "00");
+  // Mặc định: khoảng 1 ngày nữa, đúng mốc 15 phút (hợp lệ ngay khi mở form).
+  const [slot, setSlot] = useState(() => vnInputValue(26, 15));
   const [note, setNote] = useState("");
   const qc = useQueryClient();
   const m = useMutation({
@@ -168,7 +169,8 @@ function BookingModal({ open, onClose, roomId }: { open: boolean; onClose: () =>
       ) : (
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>
           <Field label="Thời gian (giờ Việt Nam)" hint="Cách hiện tại ít nhất 2 giờ, tối đa 14 ngày tới.">
-            <Input type="datetime-local" required value={slot} min={vnInputValue(2)} max={vnInputValue(24 * 14)} step={900} onChange={(e) => setSlot(e.target.value)} />
+            {/* Trình duyệt tính bước 15 phút (step=900) từ min, nên min phải rơi đúng :00/:15/:30/:45. */}
+            <Input type="datetime-local" required value={slot} min={vnInputValue(2, 15, "up")} max={vnInputValue(24 * 14, 15, "down")} step={900} onChange={(e) => setSlot(e.target.value)} />
           </Field>
           <Field label="Ghi chú cho chủ trọ (tùy chọn)">
             <Textarea rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Em đi cùng bạn..." />

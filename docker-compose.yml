@@ -46,6 +46,8 @@ services:
     build: ./backend
     restart: unless-stopped
     env_file: .env
+    volumes:
+      - ./seed/room-photos:/srv/seed-photos:ro   # ảnh phòng tượng trưng, gắn một lần cho phòng mẫu (app/seed_images.py)
     ports:
       - "8000:8000"          # chỉ để thử local; trên VM sg-app chỉ mở 80/443
     healthcheck:
