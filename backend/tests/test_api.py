@@ -130,6 +130,17 @@ def test_tc03_other_landlord_room_is_404(http, landlord1, landlord2):
     assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
 
 
+def test_landlord_houses_list(http, landlord1, landlord2):
+    """GET /landlord/houses không được 500 (GROUP BY + quan hệ joined) và chỉ trả nhà của chính chủ."""
+    r1 = http.get("/landlord/houses", headers=landlord1)
+    assert r1.status_code == 200, r1.text
+    houses1 = r1.json()
+    assert houses1 and all("room_count" in h for h in houses1)
+    r2 = http.get("/landlord/houses", headers=landlord2)
+    assert r2.status_code == 200, r2.text
+    assert not ({h["id"] for h in houses1} & {h["id"] for h in r2.json()})
+
+
 def test_tc04_publish_flow(published_room):
     assert published_room["status"] == "published"
 
