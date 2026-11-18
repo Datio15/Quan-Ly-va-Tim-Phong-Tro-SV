@@ -142,7 +142,7 @@ SPEC mục 0 quy định: **muốn đổi hay thêm API thì sửa SPEC trước
   docker compose up -d
   ```
 - Không có lệnh làm sạch riêng: TC11 sửa thẳng CSDL để giả lập lịch đã xem (`status='done'`).
-- **Ảnh phòng tượng trưng:** 28 ảnh trong `seed/room-photos/` được gắn ngẫu nhiên 2-4 ảnh/phòng cho 80 phòng mẫu khi api khởi động lần đầu trên CSDL mới (`backend/app/seed_images.py`). Phòng đang công khai/ẩn có ảnh đã duyệt; phòng chờ duyệt/nháp có ảnh "chờ duyệt" để demo quản trị duyệt ảnh. Chỉ chạy một lần mỗi CSDL, không đụng phòng chủ trọ tự tạo. Chạy lại: `docker compose exec api python -m app.seed_images --force`. Nguồn ảnh và lưu ý bản quyền ở `docs/nguon-anh.md` (SPEC 18).
+- **Ảnh phòng tượng trưng:** 28 ảnh trong `seed/room-photos/` được gắn ngẫu nhiên 2-4 ảnh/phòng cho 80 phòng mẫu khi api khởi động lần đầu trên CSDL mới (`backend/app/seed_images.py`). Phòng đang công khai/ẩn có ảnh đã duyệt; phòng chờ duyệt/nháp có ảnh "chờ duyệt" để demo quản trị duyệt ảnh. Chỉ chạy một lần mỗi CSDL, không đụng phòng chủ trọ tự tạo. Chạy lại: `docker compose exec api python -m app.seed_images --force`. Phòng không thuộc dữ liệu mẫu (vd "Phòng thử nghiệm 20m²" do pytest tạo) mà chưa có ảnh: `docker compose exec api python -m app.seed_images --all`. Nguồn ảnh và lưu ý bản quyền ở `docs/nguon-anh.md` (SPEC 18).
 - Seed có sẵn hóa đơn tháng 9 và 10/2026. Tạo lại hóa đơn tháng 10 sẽ báo `INVOICE_EXISTS` (đúng TC12).
 - Đánh giá yêu cầu lịch xem ở trạng thái **"Đã xem"**, mà chủ trọ chỉ đánh dấu được sau giờ hẹn. Để demo nhanh, đặt `REVIEW_SKIP_BOOKING_CHECK=true` trong `.env`.
 
