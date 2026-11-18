@@ -109,9 +109,9 @@ export default function MapPicker({ lat, lng, address, onChange }: Props) {
       )}
       {msg && <p className="text-xs text-slate-600">{msg}</p>}
       <div className="grid grid-cols-2 gap-2">
-        <Input type="number" step="0.000001" placeholder="Vĩ độ (lat)" value={lat ?? ""}
+        <Input type="number" step="any" placeholder="Vĩ độ (lat)" value={lat ?? ""}
           onChange={(e) => e.target.value && onChange(Number(e.target.value), lng ?? HANOI_CENTER[0])} />
-        <Input type="number" step="0.000001" placeholder="Kinh độ (lng)" value={lng ?? ""}
+        <Input type="number" step="any" placeholder="Kinh độ (lng)" value={lng ?? ""}
           onChange={(e) => e.target.value && onChange(lat ?? HANOI_CENTER[1], Number(e.target.value))} />
       </div>
     </div>

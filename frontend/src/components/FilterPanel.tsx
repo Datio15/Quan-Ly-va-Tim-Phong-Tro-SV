@@ -86,10 +86,10 @@ export default function FilterPanel({
           ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Input type="number" min={0} step={100000} placeholder="Từ" value={f.price_min} onChange={(e) => set("price_min", e.target.value)} />
-          <Input type="number" min={0} step={100000} placeholder="Đến" value={f.price_max} onChange={(e) => set("price_max", e.target.value)} />
+          <Input type="number" min={0} step={1000} placeholder="Từ" value={f.price_min} onChange={(e) => set("price_min", e.target.value)} />
+          <Input type="number" min={0} step={1000} placeholder="Đến" value={f.price_max} onChange={(e) => set("price_max", e.target.value)} />
         </div>
-        <Input className="mt-2" type="number" min={0} step={100000} placeholder="Chi phí ước tính tối đa (gồm điện nước...)" value={f.cost_max} onChange={(e) => set("cost_max", e.target.value)} />
+        <Input className="mt-2" type="number" min={0} step={1000} placeholder="Chi phí ước tính tối đa (gồm điện nước...)" value={f.cost_max} onChange={(e) => set("cost_max", e.target.value)} />
       </Section>
 
       <Section title="Diện tích & số người">

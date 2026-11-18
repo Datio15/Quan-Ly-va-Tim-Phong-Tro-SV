@@ -138,8 +138,8 @@ export default function RoomEditPage() {
           <Field label="Tiêu đề" hint="5-120 ký tự"><Input required minLength={5} maxLength={120} value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Phòng khép kín 20m² gần Xuân Thủy" /></Field>
           <Field label="Mô tả"><Textarea rows={4} value={f.description} onChange={(e) => set("description", e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Giá thuê (đ/tháng)"><Input type="number" required min={1} step={50000} value={f.price_month} onChange={(e) => set("price_month", e.target.value)} /></Field>
-            <Field label="Đặt cọc (đ)"><Input type="number" min={0} step={50000} value={f.deposit_amount} onChange={(e) => set("deposit_amount", e.target.value)} /></Field>
+            <Field label="Giá thuê (đ/tháng)"><Input type="number" required min={1000} step={1000} value={f.price_month} onChange={(e) => set("price_month", e.target.value)} /></Field>
+            <Field label="Đặt cọc (đ)"><Input type="number" min={0} step={1000} value={f.deposit_amount} onChange={(e) => set("deposit_amount", e.target.value)} /></Field>
             <Field label="Diện tích (m²)"><Input type="number" required min={1} step={0.1} value={f.area_m2} onChange={(e) => set("area_m2", e.target.value)} /></Field>
             <Field label="Tầng"><Input type="number" value={f.floor} onChange={(e) => set("floor", e.target.value)} /></Field>
             <Field label="Số người tối đa"><Input type="number" min={1} max={20} value={f.max_people} onChange={(e) => set("max_people", e.target.value)} /></Field>
