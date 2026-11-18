@@ -39,9 +39,16 @@ export function localInputToIso(value: string): string {
   return `${value.length === 16 ? `${value}:00` : value}+07:00`;
 }
 
-/** Thời điểm hiện tại + offset giờ, dạng giá trị cho input datetime-local theo giờ Việt Nam. */
-export function vnInputValue(offsetHours: number): string {
-  const d = new Date(Date.now() + offsetHours * 3600_000);
+/**
+ * Thời điểm hiện tại + offset giờ, dạng giá trị cho input datetime-local theo giờ Việt Nam.
+ * roundMinutes > 0: làm tròn tới bội số phút đó (vd 15 → :00, :15, :30, :45).
+ * Làm tròn trên thời gian Unix là đủ vì +07:00 lệch đúng số giờ nguyên.
+ * round = "up" cho mốc sớm nhất (không vi phạm quy tắc ≥ 2 giờ), "down" cho mốc muộn nhất (không vượt 14 ngày).
+ */
+export function vnInputValue(offsetHours: number, roundMinutes = 0, round: "up" | "down" = "up"): string {
+  const step = roundMinutes * 60_000;
+  const t = Date.now() + offsetHours * 3600_000;
+  const d = new Date(step ? (round === "up" ? Math.ceil(t / step) : Math.floor(t / step)) * step : t);
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
   }).formatToParts(d);
