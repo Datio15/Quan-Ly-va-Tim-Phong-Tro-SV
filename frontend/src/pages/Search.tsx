@@ -6,8 +6,9 @@ import type { SearchResult } from "../api/types";
 import FilterPanel, { type Filters } from "../components/FilterPanel";
 import MapView from "../components/MapView";
 import RoomCard from "../components/RoomCard";
-import { Badge, Button, Empty, ErrorBox, Input, Loading, Pagination, Select, cx } from "../components/ui";
+import { Badge, Button, Empty, ErrorBox, Input, Loading, Pagination, cx } from "../components/ui";
 import { useSchools } from "../lib/catalog";
+import { ResponsiveSelect } from "../components/ResponsiveSelect";
 
 function readFilters(sp: URLSearchParams): Filters {
   return {
@@ -97,14 +98,26 @@ export default function SearchPage() {
           }}
         >
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Từ khóa: gác lửng, Xuân Thủy, Cầu Giấy..." className="!border-0 !py-2.5 text-slate-800" />
-          <Select
+          <ResponsiveSelect
             value={filters.school_id}
-            onChange={(e) => apply({ ...filters, q, school_id: e.target.value, sort: e.target.value ? "distance_asc" : "relevance" })}
-            className="!border-0 !py-2.5 text-slate-800 sm:max-w-xs"
-          >
-            <option value="">Gần trường...</option>
-            {schools?.map((s) => <option key={s.id} value={s.id}>{s.short_name}</option>)}
-          </Select>
+            onValueChange={(schoolId) =>
+              apply({
+                ...filters,
+                q,
+                school_id: schoolId,
+                sort: schoolId ? "distance_asc" : "relevance",
+              })
+            }
+            options={[
+              { value: "", label: "Gần trường..." },
+              ...(schools ?? []).map((s) => ({
+                value: s.id,
+                label: s.short_name,
+              })),
+            ]}
+            className="sm:max-w-xs"
+            ariaLabel="Chọn trường gần phòng"
+          />
           <Button type="submit" className="!bg-accent-500 hover:!bg-accent-600 sm:px-6">Tìm</Button>
         </form>
       </div>
@@ -117,36 +130,73 @@ export default function SearchPage() {
         </aside>
 
         <section className="min-w-0 flex-1">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <Button variant="secondary" className="lg:hidden" onClick={() => setShowFilters(true)}>
-              Bộ lọc {activeCount > 0 && <Badge tone="blue">{activeCount}</Badge>}
-            </Button>
-            <span className="text-sm text-slate-600">
-              {result ? <><b>{result.total}</b> phòng</> : "…"}
-              {query.data && (
-                <span className="ml-2" title="Nguồn kết quả tìm kiếm">
-                  <Badge tone={query.data.source === "azure" ? "blue" : "amber"}>
-                    {query.data.source === "azure" ? "Azure AI Search" : "Dự phòng CSDL"}
-                  </Badge>
-                </span>
-              )}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <Select value={filters.sort} onChange={(e) => apply({ ...filters, sort: e.target.value })} className="!w-auto">
-                {SORTS.filter((s) => s.v !== "distance_asc" || filters.school_id).map((s) => (
-                  <option key={s.v} value={s.v}>{s.label}</option>
-                ))}
-              </Select>
-              <div className="flex overflow-hidden rounded-lg border border-slate-300 text-sm xl:hidden">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                className="lg:hidden"
+                onClick={() => setShowFilters(true)}
+              >
+                Bộ lọc {activeCount > 0 && <Badge tone="blue">{activeCount}</Badge>}
+              </Button>
+
+              <span className="text-sm text-slate-600">
+                {result ? <><b>{result.total}</b> phòng</> : "…"}
+                {query.data && (
+                  <span className="ml-2" title="Nguồn kết quả tìm kiếm">
+                    <Badge tone={query.data.source === "azure" ? "blue" : "amber"}>
+                      {query.data.source === "azure"
+                        ? "Azure AI Search"
+                        : "Dự phòng CSDL"}
+                    </Badge>
+                  </span>
+                )}
+              </span>
+            </div>
+            <div
+              className="
+                grid w-full min-w-0 grid-cols-1 gap-2
+                min-[360px]:grid-cols-[minmax(0,1fr)_auto]
+                sm:ml-auto sm:w-auto
+                sm:grid-cols-[minmax(170px,1fr)_auto]
+                xl:grid-cols-1
+              "
+            >
+              <ResponsiveSelect
+                value={filters.sort}
+                onValueChange={(sort) =>
+                  apply({ ...filters, sort })
+                }
+                options={SORTS
+                  .filter((s) => s.v !== "distance_asc" || filters.school_id)
+                  .map((s) => ({
+                    value: s.v,
+                    label: s.label,
+                  }))}
+                ariaLabel="Sắp xếp phòng"
+                className="h-10"
+              />
+
+              <div className="grid h-10 grid-cols-2 overflow-hidden rounded-lg border border-slate-300 text-sm xl:hidden">
                 {(["list", "map"] as const).map((v) => (
-                  <button key={v} className={cx("px-3 py-2", view === v ? "bg-brand-600 text-white" : "bg-white")} onClick={() => setView(v)}>
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => setView(v)}
+                    className={cx(
+                      "flex h-10 min-w-[72px] items-center justify-center whitespace-nowrap px-2.5 text-sm leading-none",
+                      view === v
+                        ? "bg-brand-600 text-white"
+                        : "bg-white"
+                    )}
+                  >
                     {v === "list" ? "Danh sách" : "Bản đồ"}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-
           <ErrorBox error={query.error} className="mb-4" />
           {query.isLoading && <Loading />}
 

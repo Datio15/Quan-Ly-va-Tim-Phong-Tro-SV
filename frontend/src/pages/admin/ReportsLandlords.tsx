@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "../../api/client";
 import type { AdminLandlord, AdminReport, Paged } from "../../api/types";
-import { Badge, Button, Card, Empty, ErrorBox, Loading, PageTitle, Pagination, STATUS_TONE, Select, Stars } from "../../components/ui";
+import { Badge, Button, Card, Empty, ErrorBox, Loading, PageTitle, Pagination, STATUS_TONE, Stars } from "../../components/ui";
+import { ResponsiveSelect } from "../../components/ResponsiveSelect";
 import { dateTime } from "../../lib/format";
 
 export function ReportsPage() {
@@ -24,11 +25,26 @@ export function ReportsPage() {
 
   return (
     <div>
-      <PageTitle actions={
-        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="!w-auto">
-          {Object.entries(LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </Select>
-      }>Báo cáo vi phạm</PageTitle>
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-semibold">
+          Báo cáo vi phạm
+        </h1>
+
+        <div className="w-full min-w-0 sm:w-72 sm:max-w-full">
+          <ResponsiveSelect
+            value={status}
+            onValueChange={(value) => {
+              setStatus(value);
+              setPage(1);
+            }}
+            options={Object.entries(LABEL).map(([value, label]) => ({
+              value,
+              label,
+            }))}
+            ariaLabel="Lọc trạng thái báo cáo"
+          />
+        </div>
+      </div>
       <ErrorBox error={q.error} />
       {q.isLoading && <Loading />}
       {q.data?.items.length === 0 && <Empty>Không có báo cáo.</Empty>}

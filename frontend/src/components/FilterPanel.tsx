@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Facet } from "../api/types";
 import { useAmenities, useSchools } from "../lib/catalog";
-import { Button, Input, Select, cx } from "./ui";
+import { Button, Input, cx } from "./ui";
+import { ResponsiveSelect } from "./ResponsiveSelect";
 
 export interface Filters {
   q: string;
   price_min: string;
   price_max: string;
-  cost_max: string;
+  cost_max: string
   area_min: string;
   area: string[];
   amenities: string[];
@@ -58,21 +59,36 @@ export default function FilterPanel({
       }}
     >
       <Section title="Trường học & khoảng cách">
-        <Select value={f.school_id} onChange={(e) => set("school_id", e.target.value)}>
-          <option value="">— Không chọn trường —</option>
-          {schools?.map((s) => (
-            <option key={s.id} value={s.id}>{s.short_name} – {s.name}</option>
-          ))}
-        </Select>
+        <ResponsiveSelect
+          value={f.school_id}
+          onValueChange={(schoolId) => set("school_id", schoolId)}
+          options={[
+            { value: "", label: "— Không chọn trường —" },
+            ...(schools ?? []).map((s) => ({
+              value: s.id,
+              label: `${s.short_name} – ${s.name}`,
+            })),
+          ]}
+          ariaLabel="Trường học"
+        />
         {f.school_id && (
-          <Select className="mt-2" value={f.max_distance_m} onChange={(e) => set("max_distance_m", e.target.value)}>
-            <option value="">Mọi khoảng cách</option>
-            <option value="1000">Trong 1 km</option>
-            <option value="1500">Trong 1,5 km</option>
-            <option value="2000">Trong 2 km</option>
-            <option value="3000">Trong 3 km</option>
-            <option value="5000">Trong 5 km</option>
-          </Select>
+          <div className="mt-2">
+            <ResponsiveSelect
+              value={f.max_distance_m}
+              onValueChange={(distance) =>
+                set("max_distance_m", distance)
+              }
+              options={[
+                { value: "", label: "Mọi khoảng cách" },
+                { value: "1000", label: "Trong 1 km" },
+                { value: "1500", label: "Trong 1,5 km" },
+                { value: "2000", label: "Trong 2 km" },
+                { value: "3000", label: "Trong 3 km" },
+                { value: "5000", label: "Trong 5 km" },
+              ]}
+              ariaLabel="Khoảng cách tới trường"
+            />
+          </div>
         )}
       </Section>
 

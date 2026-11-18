@@ -205,8 +205,8 @@ function ImagesCard({ room }: { room: LandlordRoomFull }) {
   const [err, setErr] = useState<unknown>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["landlord-room", room.id] });
   const upload = useMutation({
-    mutationFn: async (files: FileList) => {
-      for (const file of Array.from(files)) {
+    mutationFn: async (files: File[]) => {
+      for (const file of files) {
         const form = new FormData();
         form.append("file", file);
         await api(`/landlord/rooms/${room.id}/images`, { form });
@@ -228,8 +228,21 @@ function ImagesCard({ room }: { room: LandlordRoomFull }) {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">Ảnh phòng ({room.images.length}/10)</h2>
         <div>
-          <input ref={input} type="file" accept="image/jpeg,image/png" multiple className="hidden"
-            onChange={(e) => { if (e.target.files?.length) upload.mutate(e.target.files); e.target.value = ""; }} />
+          <input
+            ref={input}
+            type="file"
+            accept="image/jpeg,image/png"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? []);
+              e.currentTarget.value = "";
+
+              if (files.length > 0) {
+                upload.mutate(files);
+              }
+            }}
+          />
           <Button variant="secondary" loading={upload.isPending} disabled={room.images.length >= 10} onClick={() => input.current?.click()}>
             + Tải ảnh (JPEG/PNG ≤ 5 MB)
           </Button>
