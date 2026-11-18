@@ -138,9 +138,9 @@ export default function RoomEditPage() {
           <Field label="Tiêu đề" hint="5-120 ký tự"><Input required minLength={5} maxLength={120} value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Phòng khép kín 20m² gần Xuân Thủy" /></Field>
           <Field label="Mô tả"><Textarea rows={4} value={f.description} onChange={(e) => set("description", e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Giá thuê (đ/tháng)"><Input type="number" required min={1000} step={1000} value={f.price_month} onChange={(e) => set("price_month", e.target.value)} /></Field>
-            <Field label="Đặt cọc (đ)"><Input type="number" min={0} step={1000} value={f.deposit_amount} onChange={(e) => set("deposit_amount", e.target.value)} /></Field>
-            <Field label="Diện tích (m²)"><Input type="number" required min={1} step={0.1} value={f.area_m2} onChange={(e) => set("area_m2", e.target.value)} /></Field>
+            <Field label="Giá thuê (đ/tháng)"><Input type="number" required min={1000} max={100000000} step={1000} value={f.price_month} onChange={(e) => set("price_month", e.target.value)} /></Field>
+            <Field label="Đặt cọc (đ)"><Input type="number" min={0} max={1000000000} step={1000} value={f.deposit_amount} onChange={(e) => set("deposit_amount", e.target.value)} /></Field>
+            <Field label="Diện tích (m²)"><Input type="number" required min={1} max={9999} step={0.1} value={f.area_m2} onChange={(e) => set("area_m2", e.target.value)} /></Field>
             <Field label="Tầng"><Input type="number" value={f.floor} onChange={(e) => set("floor", e.target.value)} /></Field>
             <Field label="Số người tối đa"><Input type="number" min={1} max={20} value={f.max_people} onChange={(e) => set("max_people", e.target.value)} /></Field>
             <Field label="Trống từ ngày"><Input type="date" value={f.available_from} onChange={(e) => set("available_from", e.target.value)} /></Field>
@@ -157,7 +157,7 @@ export default function RoomEditPage() {
           <Card className="space-y-3">
             <h2 className="font-semibold">Bảng giá dịch vụ</h2>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Điện (đ/kWh)"><Input type="number" min={0} value={f.cost_rates.electricity_per_kwh} onChange={(e) => setRate("electricity_per_kwh", Number(e.target.value))} /></Field>
+              <Field label="Điện (đ/kWh)"><Input type="number" min={0} max={100000} value={f.cost_rates.electricity_per_kwh} onChange={(e) => setRate("electricity_per_kwh", Number(e.target.value))} /></Field>
               <Field label="Cách tính nước">
                 <Select value={f.cost_rates.water_mode} onChange={(e) => setRate("water_mode", e.target.value as CostRates["water_mode"])}>
                   <option value="per_m3">Theo m³</option>
@@ -165,13 +165,13 @@ export default function RoomEditPage() {
                 </Select>
               </Field>
               {f.cost_rates.water_mode === "per_m3" ? (
-                <Field label="Nước (đ/m³)"><Input type="number" min={0} value={f.cost_rates.water_per_m3} onChange={(e) => setRate("water_per_m3", Number(e.target.value))} /></Field>
+                <Field label="Nước (đ/m³)"><Input type="number" min={0} max={1000000} value={f.cost_rates.water_per_m3} onChange={(e) => setRate("water_per_m3", Number(e.target.value))} /></Field>
               ) : (
-                <Field label="Nước (đ/người)"><Input type="number" min={0} value={f.cost_rates.water_per_person} onChange={(e) => setRate("water_per_person", Number(e.target.value))} /></Field>
+                <Field label="Nước (đ/người)"><Input type="number" min={0} max={10000000} value={f.cost_rates.water_per_person} onChange={(e) => setRate("water_per_person", Number(e.target.value))} /></Field>
               )}
-              <Field label="Internet (đ/tháng)"><Input type="number" min={0} value={f.cost_rates.internet_per_month} onChange={(e) => setRate("internet_per_month", Number(e.target.value))} /></Field>
-              <Field label="Gửi xe (đ/xe)"><Input type="number" min={0} value={f.cost_rates.parking_per_vehicle} onChange={(e) => setRate("parking_per_vehicle", Number(e.target.value))} /></Field>
-              <Field label="Dịch vụ khác (đ/tháng)"><Input type="number" min={0} value={f.cost_rates.service_per_month} onChange={(e) => setRate("service_per_month", Number(e.target.value))} /></Field>
+              <Field label="Internet (đ/tháng)"><Input type="number" min={0} max={10000000} value={f.cost_rates.internet_per_month} onChange={(e) => setRate("internet_per_month", Number(e.target.value))} /></Field>
+              <Field label="Gửi xe (đ/xe)"><Input type="number" min={0} max={10000000} value={f.cost_rates.parking_per_vehicle} onChange={(e) => setRate("parking_per_vehicle", Number(e.target.value))} /></Field>
+              <Field label="Dịch vụ khác (đ/tháng)"><Input type="number" min={0} max={10000000} value={f.cost_rates.service_per_month} onChange={(e) => setRate("service_per_month", Number(e.target.value))} /></Field>
             </div>
           </Card>
           <Card>
