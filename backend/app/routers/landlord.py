@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 
 from ..config import get_settings
 from ..db import get_db
@@ -43,6 +43,9 @@ def list_houses(user: User = Depends(require_landlord), db: Session = Depends(ge
         select(House, func.count(Room.id))
         .outerjoin(Room, Room.house_id == House.id)
         .where(House.landlord_id == user.id)
+        # House.landlord là lazy="joined": nếu không tắt, SQLAlchemy thêm LEFT JOIN users và chọn cột users,
+        # Postgres báo GroupingError vì chỉ GROUP BY houses.id. house_out không đọc landlord nên lazyload là đủ.
+        .options(lazyload(House.landlord))
         .group_by(House.id)
         .order_by(House.created_at)
     ).unique().all()
