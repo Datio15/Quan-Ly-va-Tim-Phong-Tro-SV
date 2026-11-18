@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { LandlordRoomFull, Paged } from "../../api/types";
-import { Badge, Button, Card, Empty, ErrorBox, Loading, Modal, PageTitle, Pagination, Select, Textarea, cx } from "../../components/ui";
+import { Badge, Button, Card, Empty, ErrorBox, Loading, Modal, Pagination, Textarea, cx } from "../../components/ui";
 import { useAmenityLabels } from "../../lib/catalog";
 import { dateTime, vnd } from "../../lib/format";
+import { ResponsiveSelect } from "../../components/ResponsiveSelect";
 
 /** Duyệt tin và ảnh (F03). Phòng đang hiển thị có ảnh mới cũng được duyệt ở đây. */
 export default function ModerationPage() {
@@ -20,14 +21,28 @@ export default function ModerationPage() {
 
   return (
     <div>
-      <PageTitle actions={
-        <Select value={mode} onChange={(e) => { setMode(e.target.value); setPage(1); }} className="!w-auto">
-          <option value="pending">Tin chờ duyệt</option>
-          <option value="images">Phòng đang hiển thị có ảnh mới</option>
-          <option value="published">Tin đang hiển thị</option>
-          <option value="rejected">Tin bị từ chối</option>
-        </Select>
-      }>Duyệt tin đăng</PageTitle>
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-semibold">
+          Duyệt tin đăng
+        </h1>
+
+        <div className="w-full min-w-0 sm:w-72 sm:max-w-full">
+          <ResponsiveSelect
+            value={mode}
+            onValueChange={(value) => {
+              setMode(value);
+              setPage(1);
+            }}
+            options={[
+              { value: "pending", label: "Tin chờ duyệt" },
+              { value: "images", label: "Phòng đang hiển thị có ảnh mới" },
+              { value: "published", label: "Tin đang hiển thị" },
+              { value: "rejected", label: "Tin bị từ chối" },
+            ]}
+            ariaLabel="Lọc trạng thái tin đăng"
+          />
+        </div>
+      </div>
       <ErrorBox error={q.error} />
       {q.isLoading && <Loading />}
       {q.data?.items.length === 0 && <Empty>Không có tin nào.</Empty>}
