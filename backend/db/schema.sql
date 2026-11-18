@@ -382,21 +382,24 @@ CREATE FUNCTION room_monthly_cost(
   parking integer, service integer, total integer
 ) LANGUAGE sql STABLE AS $$
   WITH c AS (
+    -- Tính bằng bigint rồi kẹp về giới hạn integer: một phòng có bảng giá bất thường không được làm
+    -- hỏng truy vấn tìm kiếm của mọi người (BE-01, báo cáo QA 18/11).
     SELECT
-      r.price_month                                                           AS rent,
-      round(COALESCE(cr.electricity_per_kwh, 0) * p_kwh)::int                 AS electricity,
+      r.price_month::bigint                                                   AS rent,
+      round(COALESCE(cr.electricity_per_kwh, 0)::numeric * p_kwh)::bigint     AS electricity,
       CASE COALESCE(cr.water_mode, 'per_m3')
-        WHEN 'per_m3'     THEN round(COALESCE(cr.water_per_m3, 0) * p_water_m3)::int
-        WHEN 'per_person' THEN COALESCE(cr.water_per_person, 0) * p_people
+        WHEN 'per_m3'     THEN round(COALESCE(cr.water_per_m3, 0)::numeric * p_water_m3)::bigint
+        WHEN 'per_person' THEN COALESCE(cr.water_per_person, 0)::bigint * p_people
       END                                                                     AS water,
-      COALESCE(cr.internet_per_month, 0)                                      AS internet,
-      COALESCE(cr.parking_per_vehicle, 0) * p_vehicles                        AS parking,
-      COALESCE(cr.service_per_month, 0)                                       AS service
+      COALESCE(cr.internet_per_month, 0)::bigint                              AS internet,
+      COALESCE(cr.parking_per_vehicle, 0)::bigint * p_vehicles                AS parking,
+      COALESCE(cr.service_per_month, 0)::bigint                               AS service
     FROM rooms r LEFT JOIN cost_rates cr ON cr.room_id = r.id
     WHERE r.id = p_room_id
   )
-  SELECT rent, electricity, water, internet, parking, service,
-         rent + electricity + water + internet + parking + service
+  SELECT LEAST(rent, 2147483647)::int, LEAST(electricity, 2147483647)::int, LEAST(water, 2147483647)::int,
+         LEAST(internet, 2147483647)::int, LEAST(parking, 2147483647)::int, LEAST(service, 2147483647)::int,
+         LEAST(rent + electricity + water + internet + parking + service, 2147483647)::int
   FROM c;
 $$;
 
@@ -409,5 +412,10 @@ RETURNS integer LANGUAGE sql IMMUTABLE AS $$
            cos(radians(lat1)) * cos(radians(lat2)) * power(sin(radians(lng2 - lng1) / 2), 2)
          )))::int;
 $$;
+
+-- ---------- Giới hạn tiền (BE-01): khớp với giới hạn trong backend/app/schemas ----------
+ALTER TABLE rooms ADD CONSTRAINT rooms_money_limits CHECK (price_month <= 100000000 AND deposit_amount <= 1000000000);
+ALTER TABLE cost_rates ADD CONSTRAINT cost_rates_limits CHECK (electricity_per_kwh <= 100000 AND water_per_m3 <= 1000000 AND water_per_person <= 10000000 AND internet_per_month <= 10000000 AND parking_per_vehicle <= 10000000 AND service_per_month <= 10000000);
+ALTER TABLE tenants ADD CONSTRAINT tenants_money_limits CHECK (deposit_amount <= 1000000000);
 
 COMMIT;

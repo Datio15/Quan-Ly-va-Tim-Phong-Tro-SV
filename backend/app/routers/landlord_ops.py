@@ -218,7 +218,11 @@ def list_invoices(
 ):
     stmt = select(Invoice).join(Room, Room.id == Invoice.room_id).join(House, House.id == Room.house_id).where(House.landlord_id == user.id)
     if month:
-        stmt = stmt.where(Invoice.period == parse_month(month))
+        try:
+            period = parse_month(month)
+        except ValueError as exc:
+            raise AppError(422, "VALIDATION_ERROR", str(exc), {"field": "month"})
+        stmt = stmt.where(Invoice.period == period)
     if status:
         stmt = stmt.where(Invoice.status == status)
     rows, total = paginate(db, stmt.order_by(Invoice.period.desc(), Invoice.code), page)

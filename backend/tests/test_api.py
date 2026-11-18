@@ -330,3 +330,62 @@ def test_image_upload_and_validation(http, landlord1, published_room):
     r = http.post(f"/landlord/rooms/{published_room['id']}/images", headers=landlord1,
                   files={"file": ("a.png", b"not an image", "image/png")})
     assert r.status_code == 422
+
+
+# ---------- Báo cáo QA 18/11: BE-01, BE-02 ----------
+def _room_body(house_id: str, **over) -> dict:
+    body = {"house_id": house_id, "title": "Phòng kiểm thử biên", "price_month": 3000000, "area_m2": 20,
+            "cost_rates": {"electricity_per_kwh": 3500}}
+    body.update(over)
+    return body
+
+
+def test_be02_edge_inputs_return_422_not_500(http, landlord1, published_room):
+    """Đầu vào hợp lệ về kiểu nhưng vượt giới hạn cột/ngày tháng: phải 422, không bao giờ 500."""
+    house_id, room_id = published_room["house"]["id"], published_room["id"]
+    student = new_student(http)
+    big = 3_000_000_000
+    cases = [
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, price_month=big)),
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, deposit_amount=big)),
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, cost_rates={"electricity_per_kwh": big})),
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, area_m2=99999.99)),
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, area_m2=0.04)),
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, area_m2=20.55)),
+        ("POST", "/landlord/rooms", landlord1, _room_body(house_id, available_from="0001-01-01")),
+        ("POST", "/landlord/tenants", landlord1, {"room_id": room_id, "full_name": "Khách Biên", "start_date": "2026-11-01", "deposit_amount": big}),
+        ("POST", "/landlord/tenants", landlord1, {"room_id": room_id, "full_name": "Khách Biên", "start_date": "0001-01-01"}),
+        ("POST", "/landlord/meter-readings", landlord1, {"room_id": room_id, "month": "2026-11", "electricity_index": 1e12, "water_index": 1}),
+        ("POST", "/landlord/meter-readings", landlord1, {"room_id": room_id, "month": "2026-11", "electricity_index": 100.04, "water_index": 1}),
+        ("POST", "/bookings", student, {"room_id": room_id, "slot_start": "0001-01-01T00:00:00+07:00"}),
+        ("POST", "/landlord/invoices/generate", landlord1, {"month": "9999-12"}),
+        ("GET", "/landlord/invoices?month=0000-01", landlord1, None),
+    ]
+    for method, path, headers, body in cases:
+        r = http.request(method, path, headers=headers, json=body)
+        assert r.status_code == 422, (path, body, r.status_code, r.text)
+    # 1e999 trong JSON được đọc thành vô cực
+    raw = '{"room_id": "%s", "month": "2026-11", "electricity_index": 1e999, "water_index": 1}' % room_id
+    r = http.post("/landlord/meter-readings", headers={**landlord1, "Content-Type": "application/json"}, content=raw)
+    assert r.status_code == 422, r.text
+
+
+def test_be01_max_cost_rates_do_not_break_search(http, landlord1, admin, published_room):
+    """Phòng công khai có bảng giá ở mức tối đa cho phép: chi phí, chi tiết, so sánh, tìm kiếm vẫn 200."""
+    rates = {"electricity_per_kwh": 100_000, "water_mode": "per_m3", "water_per_m3": 1_000_000,
+             "internet_per_month": 10_000_000, "parking_per_vehicle": 10_000_000, "service_per_month": 10_000_000}
+    r = http.post("/landlord/rooms", headers=landlord1,
+                  json=_room_body(published_room["house"]["id"], price_month=100_000_000, cost_rates=rates))
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+    assert http.post(f"/landlord/rooms/{rid}/submit", headers=landlord1).status_code == 200
+    assert http.post(f"/admin/rooms/{rid}/approve", headers=admin, json={}).status_code == 200
+    try:
+        cost = http.get(f"/rooms/{rid}/cost", params={"kwh": 10000, "m3": 1000, "people": 20, "vehicles": 20})
+        assert cost.status_code == 200, cost.text  # trước đây tràn int4 -> 500
+        assert cost.json()["total"] == 2_147_483_647  # tổng thật > giới hạn integer nên được kẹp
+        assert http.get(f"/rooms/{rid}").status_code == 200
+        assert http.get("/search/rooms", params={"sort": "price_desc"}).status_code == 200
+        assert http.post("/rooms/compare", json={"ids": [rid, published_room["id"]]}).status_code == 200
+    finally:
+        http.post(f"/landlord/rooms/{rid}/hide", headers=landlord1)

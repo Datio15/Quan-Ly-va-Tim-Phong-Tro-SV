@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
@@ -48,6 +49,24 @@ def install_error_handlers(app: FastAPI) -> None:
             status_code=422,
             content=_body("VALIDATION_ERROR", "Dữ liệu không hợp lệ", {"fields": fields}),
         )
+
+    @app.exception_handler(DataError)
+    async def _db_data(request: Request, exc: DataError):
+        # Giá trị vượt kiểu cột (tràn số, sai định dạng) lọt qua kiểm tra đầu vào: trả 422 thay vì 500.
+        import logging
+
+        logging.getLogger("phongtro.api").warning("DataError ở %s %s: %s", request.method, request.url.path,
+                                                   type(exc.orig).__name__ if exc.orig else "?")
+        return JSONResponse(status_code=422, content=_body("VALIDATION_ERROR", "Giá trị vượt giới hạn cho phép"))
+
+    @app.exception_handler(IntegrityError)
+    async def _db_integrity(request: Request, exc: IntegrityError):
+        # Vi phạm ràng buộc CSDL chưa được xử lý riêng ở router (CHECK, khóa ngoại...).
+        import logging
+
+        logging.getLogger("phongtro.api").warning("IntegrityError ở %s %s: %s", request.method, request.url.path,
+                                                   type(exc.orig).__name__ if exc.orig else "?")
+        return JSONResponse(status_code=422, content=_body("VALIDATION_ERROR", "Dữ liệu không thỏa ràng buộc của hệ thống"))
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception):

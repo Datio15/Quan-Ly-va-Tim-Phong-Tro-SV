@@ -74,3 +74,15 @@ Theo quy ước mục 0, các điểm dưới đây chưa có trong SPEC v0.3, �
 7. Biến môi trường mới: `CORS_ORIGINS` (mặc định trống vì web và api cùng nguồn qua nginx), `REVIEW_SKIP_BOOKING_CHECK` (cờ demo của mục 9.4), `FORWARDED_ALLOW_IPS` (mạng tin cậy cho header `X-Forwarded-For`, mặc định dải nội bộ).
 8. Mã lỗi thêm: `RATE_LIMITED` (429), `INTERNAL_ERROR` (500).
 9. Gửi duyệt yêu cầu nhà đã có tọa độ (để tìm theo khoảng cách và bản đồ hoạt động).
+
+## Migration CSDL
+
+`db/schema.sql` dùng cho CSDL tạo mới. Thay đổi về sau nằm trong `db/migrations/` (chạy lại nhiều lần được), áp lên CSDL đang chạy:
+
+```bash
+docker compose exec -T db psql -U phongtro_user -d phongtro_db -v ON_ERROR_STOP=1 < backend/db/migrations/2026-11-18-gioi-han-tien.sql
+```
+
+| File | Nội dung |
+|---|---|
+| `2026-11-18-gioi-han-tien.sql` | `room_monthly_cost` tính bằng bigint rồi kẹp về int4 (BE-01); CHECK giới hạn tiền `rooms`, `cost_rates`, `tenants` (NOT VALID) |
