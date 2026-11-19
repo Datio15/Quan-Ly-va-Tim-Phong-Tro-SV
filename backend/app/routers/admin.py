@@ -270,15 +270,15 @@ def resync(body: ResyncIn | None = Body(None), admin: User = Depends(require_adm
         reset_q.values(status="pending", attempts=0, next_attempt_at=func.now(), last_error=None)
     ).rowcount
     if room_id:
-        room = db.get(Room, room_id)
-        if room is None:
-            raise not_found("Không tìm thấy phòng")
-        rooms = [room]
+        rooms = [_room_for_update(db, room_id)]
     else:
-        rooms = db.scalars(select(Room).where(Room.status == "published")).all()
+        rooms = db.scalars(select(Room).where(Room.status == "published").order_by(Room.id).with_for_update(of=Room)).all()
     for room in rooms:
-        db.add(SyncOutbox(entity_type="room", entity_id=room.id, entity_version=room.version,
-                          op="upsert" if room.status == "published" else "delete", payload={"reason": "resync"}))
+        # TĂNG version (room_changed) thay vì gửi lại đúng version cũ: Function ingest-room bỏ qua tài liệu có
+        # version <= bản trong chỉ mục, nên gửi lại cùng version thì đồng bộ lại không có tác dụng (vd tài liệu
+        # đã lên Azure trước khi worker đẩy ảnh sang Blob sẽ thiếu image_urls mãi). Phòng không còn công khai
+        # (khi đồng bộ lại một phòng) được ghi op = delete.
+        room_changed(db, room, was_published=True, reason="resync")
     job.status = "success"
     job.finished_at = datetime.now(timezone.utc)
     job.details = job.details | {"reset_failed": reset, "enqueued": len(rooms)}

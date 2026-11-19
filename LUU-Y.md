@@ -102,6 +102,30 @@ AZURE_BLOB_PUBLIC_BASE_URL=https://stphongtro<SUFFIX>.blob.core.windows.net/publ
 
 Kiểm tra: tìm phòng trên web phải thấy huy hiệu **"Azure AI Search"**, hoặc gọi `curl -I "http://localhost/api/v1/search/rooms"` thấy `X-Search-Source: azure`. Lưu ý: chỉ mục chỉ có dữ liệu sau khi worker và Function `ingest-room` đã chạy.
 
+#### Thứ tự bật Azure để danh sách phòng có ảnh
+
+Có khóa `AZURE_SEARCH_*` là api chuyển sang tìm bằng chỉ mục Azure. Ảnh trong kết quả lấy từ trường `image_urls` của
+tài liệu, mà trường này chỉ có khi **worker đã đẩy ảnh sang Blob và gọi Function `ingest-room`**. Bật Search trước khi
+luồng đồng bộ chạy thì danh sách phòng mất ảnh (từ bản gộp PR #15, api tạm lấy ảnh từ CSDL cho tài liệu thiếu ảnh, nhưng
+chỉ mục vẫn thiếu cho tới khi đồng bộ xong). Làm theo thứ tự:
+
+1. Function App đã deploy `ingest-room` (Người 5), có `AZURE_SEARCH_ADMIN_KEY` trong cấu hình Function.
+2. Trên **vm-app** (worker), `.env` có thêm:
+   ```
+   AZURE_FUNCTION_INGEST_URL=https://func-phongtro-<SUFFIX>.azurewebsites.net/api/ingest-room
+   AZURE_FUNCTION_KEY=<khóa hàm ingest-room>
+   AZURE_STORAGE_CONNECTION_STRING=<chuỗi kết nối Storage>
+   AZURE_BLOB_PUBLIC_BASE_URL=https://stphongtro<SUFFIX>.blob.core.windows.net/public-images
+   ```
+   rồi `docker compose up -d worker`. Log worker không còn dòng "Tạm dừng đồng bộ vì chưa cấu hình AZURE_FUNCTION_URL/KEY".
+3. Đăng nhập quản trị → **Hệ thống** → **Đồng bộ lại toàn bộ**. Thao tác này tăng `version` của mọi phòng đang hiển thị
+   nên Function nhận lại cả những tài liệu đã có trên Azure (Function bỏ qua tài liệu có version không lớn hơn bản đang có).
+   Đợi số "Đang chờ" về 0, "Lỗi" = 0.
+4. Kiểm tra: container Blob `public-images` có thư mục `rooms/<id>/`; thẻ phòng trên trang tìm kiếm có ảnh và ảnh
+   có địa chỉ `https://stphongtro<SUFFIX>.blob.core.windows.net/...` (không phải `/api/v1/images/...`).
+5. Chỉ **một** worker được đọc hàng đợi `ops-ticks` của nhóm (worker trên VM). Máy cá nhân có khóa Storage thì đặt
+   `AZURE_STORAGE_CONNECTION_STRING: ""` cho service `worker` trong `docker-compose.override.yml` (không đưa lên git).
+
 ---
 
 ## 5. Những điểm mình tự thêm, chưa có trong SPEC ⚠️

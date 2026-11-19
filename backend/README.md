@@ -83,6 +83,7 @@ Theo quy ước mục 0, các điểm dưới đây chưa có trong SPEC v0.3, �
 16. Tìm kiếm dự phòng CSDL: không phân biệt dấu, mọi từ phải khớp, có facet `area`/`amenities` như Azure; `price_min > price_max` trả 422 (BE-12).
 17. Đăng nhập chỉ đếm lần sai: 10/phút cho mỗi (IP, email), 50/phút cho mỗi IP; đăng ký 10 lần/10 phút/IP; báo cáo 20/giờ/tài khoản (BE-06). Mật khẩu đăng ký cần cả chữ và số, không bị cắt khoảng trắng; email kiểm tra chặt hơn; tên/tiêu đề không chứa `<` `>` (BE-07).
 18. Biến môi trường `API_DOCS` (mặc định `true`; đặt `false` trên VM để tắt `/api/docs`). Mọi thời gian trả về dạng `+07:00` (BE-14). Lỗi `DataError`/`IntegrityError` ở lệnh đọc trả 500 (lỗi phía máy chủ), chỉ lệnh ghi mới đổi thành 422.
+19. `POST /admin/sync/resync` tăng `rooms.version` của các phòng được xếp lại (trước đây gửi lại đúng version cũ nên Function `ingest-room` bỏ qua, đồng bộ lại không bổ sung được ảnh cho tài liệu đã có trên Azure). Phụ: `updated_at` của các phòng đó đổi theo.
 
 ## Migration CSDL
 
