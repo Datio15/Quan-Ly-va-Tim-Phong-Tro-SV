@@ -153,7 +153,9 @@ def search_rooms(db: Session, p: SearchParams) -> tuple[dict, str]:
         started = time.monotonic()
         future = _pool.submit(_search_azure, p)
         try:
-            return future.result(timeout=settings.search_timeout_ms / 1000), "azure"
+            result = future.result(timeout=settings.search_timeout_ms / 1000)
+            _fill_missing_thumbnails(db, result["items"])
+            return result, "azure"
         except FutureTimeout:
             future.cancel()
             reason = "timeout"
@@ -162,6 +164,26 @@ def search_rooms(db: Session, p: SearchParams) -> tuple[dict, str]:
         log.warning("Azure AI Search lỗi (%s) sau %d ms, dùng tìm kiếm dự phòng", reason, (time.monotonic() - started) * 1000)
         metrics.record_search_fallback(reason)
     return search_db(db, p), "db"
+
+
+def _fill_missing_thumbnails(db: Session, items: list[dict]) -> None:
+    """Tài liệu Azure chưa có image_urls (ảnh chưa được worker đẩy lên Blob) thì lấy ảnh đã duyệt đầu tiên
+    trong CSDL, phục vụ qua /api/v1/images/{id} như chế độ dự phòng. Một truy vấn cho cả trang kết quả."""
+    missing = [it["id"] for it in items if not it.get("thumbnail_url")]
+    if not missing:
+        return
+    from sqlalchemy import text
+
+    from .rooms_public import image_url
+
+    rows = db.execute(text("""
+        SELECT DISTINCT ON (room_id) room_id::text AS room_id, id, public_url FROM room_images
+        WHERE room_id::text = ANY(:ids) AND moderation = 'ok' ORDER BY room_id, position, created_at
+    """), {"ids": missing}).mappings().all()
+    by_room = {r["room_id"]: image_url(r["id"], r["public_url"]) for r in rows}
+    for it in items:
+        if not it.get("thumbnail_url"):
+            it["thumbnail_url"] = by_room.get(it["id"])
 
 
 _reach_cache: dict = {"at": 0.0, "ok": False}
