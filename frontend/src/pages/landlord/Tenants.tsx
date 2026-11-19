@@ -116,6 +116,7 @@ function TenantModal({ tenant, onClose }: { tenant: Tenant | null; onClose: () =
             await api(`/landlord/tenants/${saved.id}/files`, { form });
             if (ref.current) ref.current.value = "";
           } catch (e) {
+            if (ref.current) ref.current.value = ""; // bỏ file lỗi để lần Lưu sau không tải lại đúng file đó
             throw new Error(`Đã lưu thông tin khách thuê, nhưng tải ${kind === "id_card" ? "ảnh CCCD" : "hợp đồng"} lỗi: ${errorMessage(e)}. Chọn lại file rồi bấm Lưu.`);
           }
         }
