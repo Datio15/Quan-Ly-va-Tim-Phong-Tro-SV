@@ -138,7 +138,9 @@ export default function MapView({ rooms, school, radiusM, highlightedId, classNa
   }
   return (
     <div className={cx("relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100", className)}>
-      <div ref={el} className="absolute inset-0" />
+      {/* CSS của Azure Maps (tải sau Tailwind) đặt position: relative cho khung bản đồ, làm mất absolute inset-0
+         và khung cao 0px (bản đồ trắng). h-full w-full giữ kích thước dù position là gì. */}
+      <div ref={el} className="absolute inset-0 h-full w-full" />
       {error && <div className="absolute inset-0 flex items-center justify-center text-sm text-rose-600">{error}</div>}
     </div>
   );

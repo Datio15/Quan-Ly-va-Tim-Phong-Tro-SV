@@ -128,7 +128,9 @@ export default function MapPicker({ lat, lng, address, onChange, onClear }: Prop
             <span className="text-xs text-slate-500">Bấm trên bản đồ hoặc kéo ghim để chỉnh vị trí.</span>
           </div>
           <div className="relative h-64 overflow-hidden rounded-lg border border-slate-200">
-            <div ref={el} className="absolute inset-0" />
+            {/* CSS của Azure Maps (tải sau Tailwind) đặt position: relative cho khung bản đồ, làm mất absolute inset-0
+               và khung cao 0px (bản đồ trắng). h-full w-full giữ kích thước dù position là gì. */}
+            <div ref={el} className="absolute inset-0 h-full w-full" />
           </div>
         </>
       ) : (
