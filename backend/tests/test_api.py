@@ -575,3 +575,19 @@ def test_compare_reports_missing_rooms(http, published_room):
     assert r.status_code == 200 and len(r.json()["missing"]) == 1
     r = http.post("/rooms/compare", json={"ids": [ids[0], str(uuid.uuid4())]})
     assert r.status_code == 404 and len(r.json()["error"]["details"]["missing"]) == 1
+
+
+def test_resync_bumps_version(http, admin, landlord1, published_room, db):
+    """Đồng bộ lại phải tăng version: Function ingest-room bỏ qua tài liệu có version <= bản trong chỉ mục,
+    nên gửi lại đúng version cũ (vd để bổ sung ảnh vừa đẩy lên Blob) sẽ không có tác dụng."""
+    rid = published_room["id"]
+    v0 = http.get(f"/landlord/rooms/{rid}", headers=landlord1).json()["version"]
+    r = http.post("/admin/sync/resync", headers=admin, json={"room_id": rid})
+    assert r.status_code == 200 and r.json()["enqueued"] == 1, r.text
+    v1 = http.get(f"/landlord/rooms/{rid}", headers=landlord1).json()["version"]
+    assert v1 == v0 + 1
+    db.commit()  # làm mới snapshot
+    row = db.execute(text("SELECT entity_version, op FROM sync_outbox WHERE entity_id = :id ORDER BY id DESC LIMIT 1"),
+                     {"id": rid}).one()
+    assert row.entity_version == v1 and row.op == "upsert"
+    assert http.post("/admin/sync/resync", headers=admin, json={"room_id": str(uuid.uuid4())}).status_code == 404
