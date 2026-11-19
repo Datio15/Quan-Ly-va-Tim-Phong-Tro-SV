@@ -3,9 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "../../api/client";
 import type { CostRates, House, LandlordRoomFull } from "../../api/types";
-import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, PageTitle, STATUS_TONE, Select, Textarea, cx } from "../../components/ui";
+import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, PageTitle, STATUS_TONE, Textarea, cx } from "../../components/ui";
 import { useAmenities } from "../../lib/catalog";
 import { ROOM_STATUS_LABEL, vnd } from "../../lib/format";
+import { ResponsiveSelect } from "../../components/ResponsiveSelect";
 
 interface RoomForm {
   house_id: string;
@@ -127,17 +128,25 @@ export default function RoomEditPage() {
       {r?.status === "pending" && <Notice>Tin đang chờ quản trị viên duyệt.</Notice>}
       {r?.status === "published" && <Notice tone="success">Tin đang hiển thị. Mọi thay đổi được đồng bộ sang Azure AI Search trong vài giây (phiên bản v{r.version}).</Notice>}
 
-      <form className="grid gap-5 lg:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      <form className="grid gap-5 lg:grid-cols-2 [&_input]:!h-12" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <Card className="space-y-3">
           <h2 className="font-semibold">Thông tin phòng</h2>
           <Field label="Nhà trọ">
-            <Select value={f.house_id} onChange={(e) => set("house_id", e.target.value)} required>
-              {houses.data?.map((h) => <option key={h.id} value={h.id}>{h.name} – {h.street}</option>)}
-            </Select>
+            <div className="w-full [&_button]:!h-12 [&_button]:!w-full">
+              <ResponsiveSelect
+                value={f.house_id}
+                onValueChange={(value) => set("house_id", value)}
+                options={(houses.data ?? []).map((h) => ({
+                  value: h.id,
+                  label: `${h.name} – ${h.street}`,
+                }))}
+                ariaLabel="Chọn nhà trọ"
+              />
+            </div>
           </Field>
           <Field label="Tiêu đề" hint="5-120 ký tự"><Input required minLength={5} maxLength={120} value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Phòng khép kín 20m² gần Xuân Thủy" /></Field>
           <Field label="Mô tả"><Textarea rows={4} value={f.description} onChange={(e) => set("description", e.target.value)} /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 items-end gap-3 [&>*]:min-w-0">
             <Field label="Giá thuê (đ/tháng)"><Input type="number" required min={1000} max={100000000} step={1000} value={f.price_month} onChange={(e) => set("price_month", e.target.value)} /></Field>
             <Field label="Đặt cọc (đ)"><Input type="number" min={0} max={1000000000} step={1000} value={f.deposit_amount} onChange={(e) => set("deposit_amount", e.target.value)} /></Field>
             <Field label="Diện tích (m²)"><Input type="number" required min={1} max={9999} step={0.1} value={f.area_m2} onChange={(e) => set("area_m2", e.target.value)} /></Field>
@@ -156,13 +165,22 @@ export default function RoomEditPage() {
         <div className="space-y-5">
           <Card className="space-y-3">
             <h2 className="font-semibold">Bảng giá dịch vụ</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 items-end gap-3 [&>*]:min-w-0">
               <Field label="Điện (đ/kWh)"><Input type="number" min={0} max={100000} value={f.cost_rates.electricity_per_kwh} onChange={(e) => setRate("electricity_per_kwh", Number(e.target.value))} /></Field>
               <Field label="Cách tính nước">
-                <Select value={f.cost_rates.water_mode} onChange={(e) => setRate("water_mode", e.target.value as CostRates["water_mode"])}>
-                  <option value="per_m3">Theo m³</option>
-                  <option value="per_person">Theo người</option>
-                </Select>
+                <div className="w-full [&_button]:!h-12 [&_button]:!w-full">
+                  <ResponsiveSelect
+                    value={f.cost_rates.water_mode}
+                    onValueChange={(value) =>
+                      setRate("water_mode", value as CostRates["water_mode"])
+                    }
+                    options={[
+                      { value: "per_m3", label: "Theo m³" },
+                      { value: "per_person", label: "Theo người" },
+                    ]}
+                    ariaLabel="Chọn cách tính nước"
+                  />
+                </div>
               </Field>
               {f.cost_rates.water_mode === "per_m3" ? (
                 <Field label="Nước (đ/m³)"><Input type="number" min={0} max={1000000} value={f.cost_rates.water_per_m3} onChange={(e) => setRate("water_per_m3", Number(e.target.value))} /></Field>
