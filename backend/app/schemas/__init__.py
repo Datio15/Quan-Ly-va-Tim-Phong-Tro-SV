@@ -1,14 +1,21 @@
 """Pydantic request schema. Phản hồi phần lớn dựng bằng dict theo đúng ví dụ ở SPEC 10.4."""
 import re
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")  # cùng điều kiện CHECK trong schema.sql
+# Chặt hơn CHECK trong schema.sql (CHECK chỉ là lưới an toàn cuối): phần tên miền phải có đuôi chữ ≥ 2 ký tự,
+# không có hai dấu chấm liền nhau, không bắt đầu/kết thúc bằng dấu chấm (BE-07).
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$")
 PHONE_RE = re.compile(r"^\+?[0-9]{9,12}$")
 AMENITY_RE = re.compile(r"^[a-z_]+$")
+VN = timezone(timedelta(hours=7))
+
+# Lịch xem phòng: mốc 15 phút, trong khung 07:00-21:00 giờ Việt Nam (BE-08).
+BOOKING_STEP_MIN = 15
+BOOKING_FIRST_HOUR, BOOKING_LAST_HOUR = 7, 21
 
 
 class StrictModel(BaseModel):
@@ -24,6 +31,46 @@ def _check_phone(v: str | None) -> str | None:
 
 
 Phone = Annotated[str | None, AfterValidator(_check_phone)]
+
+
+def check_email(v: str) -> str:
+    v = v.strip().lower()
+    local = v.split("@", 1)[0]
+    if not EMAIL_RE.match(v) or ".." in v or local.startswith(".") or local.endswith("."):
+        raise ValueError("Email không hợp lệ")
+    return v
+
+
+def _optional_email(v: str | None) -> str | None:
+    if v in (None, ""):
+        return None
+    return check_email(v)
+
+
+OptionalEmail = Annotated[str | None, Field(max_length=254), AfterValidator(_optional_email)]
+
+
+def _no_markup(v: str | None) -> str | None:
+    """Tên người, tiêu đề phòng không chứa < > (tránh chèn HTML khi dữ liệu đi sang kênh khác web)."""
+    if v is not None and ("<" in v or ">" in v):
+        raise ValueError("Không được chứa ký tự < hoặc >")
+    return v
+
+
+PersonName = Annotated[str, Field(min_length=2, max_length=100), AfterValidator(_no_markup)]
+RoomTitle = Annotated[str, Field(min_length=5, max_length=120), AfterValidator(_no_markup)]
+
+
+def _check_password(v: str) -> str:
+    if not (any(c.isalpha() for c in v) and any(c.isdigit() for c in v)):
+        raise ValueError("Mật khẩu cần có cả chữ và số")
+    return v
+
+
+# Mật khẩu KHÔNG bị cắt khoảng trắng (StrictModel cắt mọi chuỗi khác).
+Password = Annotated[str, StringConstraints(strip_whitespace=False, min_length=8, max_length=128),
+                     AfterValidator(_check_password)]
+RawPassword = Annotated[str, StringConstraints(strip_whitespace=False, max_length=128)]
 
 # ---------- Giới hạn giá trị (BE-01, BE-02 báo cáo QA 18/11) ----------
 # Cột tiền là integer (int4) và room_monthly_cost cộng các khoản: giới hạn để không tràn số và không có
@@ -59,22 +106,20 @@ Deposit = Annotated[int, Field(ge=0, le=MAX_DEPOSIT)]
 # ---------- Xác thực ----------
 class RegisterIn(StrictModel):
     email: str = Field(max_length=254)
-    password: str = Field(min_length=8, max_length=128)
-    full_name: str = Field(min_length=2, max_length=100)
+    password: Password
+    full_name: PersonName
     phone: Phone = None
     role: Literal["student", "landlord"]
 
     @field_validator("email")
     @classmethod
     def _email(cls, v: str) -> str:
-        if not EMAIL_RE.match(v):
-            raise ValueError("Email không hợp lệ")
-        return v.lower()
+        return check_email(v)
 
 
 class LoginIn(StrictModel):
-    email: str
-    password: str
+    email: str = Field(max_length=254)
+    password: RawPassword
 
     @field_validator("email")
     @classmethod
@@ -83,7 +128,7 @@ class LoginIn(StrictModel):
 
 
 class MePatch(StrictModel):
-    full_name: str | None = Field(default=None, min_length=2, max_length=100)
+    full_name: PersonName | None = None
     phone: Phone = None
 
 
@@ -116,6 +161,12 @@ class BookingIn(StrictModel):
             raise ValueError("Thời gian phải có múi giờ, vd 2026-11-21T16:00:00+07:00")
         if not YEAR_MIN <= v.year <= YEAR_MAX:
             raise ValueError(f"Năm phải trong khoảng {YEAR_MIN}-{YEAR_MAX}")
+        local = v.astimezone(VN)
+        if local.second or local.microsecond or local.minute % BOOKING_STEP_MIN:
+            raise ValueError(f"Giờ hẹn phải rơi vào mốc {BOOKING_STEP_MIN} phút (:00, :15, :30, :45)")
+        minutes = local.hour * 60 + local.minute
+        if not BOOKING_FIRST_HOUR * 60 <= minutes <= BOOKING_LAST_HOUR * 60:
+            raise ValueError(f"Giờ hẹn trong khoảng {BOOKING_FIRST_HOUR:02d}:00-{BOOKING_LAST_HOUR:02d}:00")
         return v
 
 
@@ -133,6 +184,12 @@ class HouseIn(StrictModel):
     city: str = Field(default="Hà Nội", min_length=1, max_length=120)
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def _both_coords(self):
+        if (self.lat is None) != (self.lng is None):
+            raise ValueError("Cần nhập cả vĩ độ và kinh độ, hoặc để trống cả hai")  # BE-15
+        return self
 
 
 class HousePatch(StrictModel):
@@ -158,7 +215,7 @@ class CostRatesIn(StrictModel):
 
 class RoomIn(StrictModel):
     house_id: uuid.UUID
-    title: str = Field(min_length=5, max_length=120)
+    title: RoomTitle
     description: str = Field(default="", max_length=5000)
     price_month: Rent
     deposit_amount: Deposit = 0
@@ -173,7 +230,7 @@ class RoomIn(StrictModel):
 
 class RoomPatch(StrictModel):
     house_id: uuid.UUID | None = None
-    title: str | None = Field(default=None, min_length=5, max_length=120)
+    title: RoomTitle | None = None
     description: str | None = Field(default=None, max_length=5000)
     price_month: Rent | None = None
     deposit_amount: Deposit | None = None
@@ -188,9 +245,9 @@ class RoomPatch(StrictModel):
 
 class TenantIn(StrictModel):
     room_id: uuid.UUID
-    full_name: str = Field(min_length=2, max_length=100)
+    full_name: PersonName
     phone: Phone = None
-    email: str | None = None
+    email: OptionalEmail = None
     start_date: SafeDate
     end_date: SafeDate | None = None
     deposit_amount: Deposit = 0
@@ -199,9 +256,9 @@ class TenantIn(StrictModel):
 
 
 class TenantPatch(StrictModel):
-    full_name: str | None = Field(default=None, min_length=2, max_length=100)
+    full_name: PersonName | None = None
     phone: Phone = None
-    email: str | None = None
+    email: OptionalEmail = None
     start_date: SafeDate | None = None
     end_date: SafeDate | None = None
     deposit_amount: Deposit | None = None

@@ -78,6 +78,11 @@ def update_house(house_id: uuid.UUID, body: HousePatch, user: User = Depends(req
         if getattr(house, key) != value:
             setattr(house, key, value)
             changed_public |= key in PUBLIC_HOUSE_FIELDS
+    # BE-15: tọa độ phải đủ cả hai hoặc trống cả hai; nhà có phòng đang công khai không được bỏ tọa độ.
+    if (house.lat is None) != (house.lng is None):
+        raise AppError(422, "VALIDATION_ERROR", "Cần nhập cả vĩ độ và kinh độ, hoặc để trống cả hai")
+    if house.lat is None and db.scalar(select(exists().where(Room.house_id == house.id, Room.status == "published"))):
+        raise AppError(422, "VALIDATION_ERROR", "Nhà đang có phòng hiển thị nên không bỏ tọa độ được")
     if changed_public:
         house_rooms_changed(db, house.id, "house_update")
     db.commit()
@@ -129,7 +134,7 @@ def _cost_rates_out(cr: CostRate | None) -> dict:
 
 def image_out(i: RoomImage) -> dict:
     return {
-        "id": str(i.id), "url": image_url(i.id, i.public_url), "position": i.position, "moderation": i.moderation,
+        "id": str(i.id), "url": image_url(i.id, i.public_url, signed=True), "position": i.position, "moderation": i.moderation,
         "moderation_note": i.moderation_note, "synced": bool(i.public_url),
     }
 
@@ -196,7 +201,7 @@ def list_rooms(
     items = []
     for r in rows:
         thumb = db.scalars(select(RoomImage).where(RoomImage.room_id == r.id).order_by(RoomImage.position).limit(1)).first()
-        items.append(room_summary(r) | {"thumbnail_url": image_url(thumb.id, thumb.public_url) if thumb else None})
+        items.append(room_summary(r) | {"thumbnail_url": image_url(thumb.id, thumb.public_url, signed=True) if thumb else None})
     return page.wrap(items, total)
 
 
@@ -256,6 +261,9 @@ def submit_room(room_id: uuid.UUID, user: User = Depends(require_landlord), db: 
         raise invalid_transition(f"Không thể gửi duyệt phòng đang ở trạng thái {room.status}")
     if room.house.lat is None or room.house.lng is None:
         raise AppError(422, "VALIDATION_ERROR", "Nhà chưa có tọa độ; hãy đặt ghim trên bản đồ trước khi gửi duyệt")
+    has_image = db.scalar(select(exists().where(RoomImage.room_id == room.id, RoomImage.moderation != "rejected")))
+    if not has_image:
+        raise AppError(422, "VALIDATION_ERROR", "Cần ít nhất 1 ảnh phòng trước khi gửi duyệt")  # BE-09
     room.status = "pending"
     room.reject_reason = None
     room_changed(db, room, was_published=False, reason="submit")
@@ -305,10 +313,10 @@ async def upload_image(
     data = await file.read(storage.MAX_IMAGE_BYTES + 1)
     if len(data) > storage.MAX_IMAGE_BYTES:
         raise AppError(422, "VALIDATION_ERROR", "Ảnh tối đa 5 MB")
-    kind = storage.sniff_image(data)
-    if kind is None:
-        raise AppError(422, "VALIDATION_ERROR", "Chỉ nhận ảnh JPEG hoặc PNG")
-    ctype, ext = kind
+    normalized = storage.normalize_image(data)
+    if normalized is None:
+        raise AppError(422, "VALIDATION_ERROR", "Chỉ nhận ảnh JPEG hoặc PNG hợp lệ")
+    data, ctype, ext = normalized
     image_id = uuid.uuid4()
     key = f"rooms/{room.id}/{image_id}.{ext}"  # tên do server sinh, không dùng tên file người dùng gửi
     try:

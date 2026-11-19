@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "../api/client";
@@ -150,9 +150,24 @@ function Info({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** Giờ hẹn mặc định: ~26 giờ nữa làm tròn mốc 15 phút; rơi ngoài 07:00-21:00 thì dời sang 09:00. */
+function defaultSlot(): string {
+  const v = vnInputValue(26, 15);
+  const hour = Number(v.slice(11, 13));
+  if (hour >= 7 && v.slice(11) <= "21:00") return v;
+  if (hour < 7) return `${v.slice(0, 10)}T09:00`;
+  const next = new Date(`${v.slice(0, 10)}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return `${next.toISOString().slice(0, 10)}T09:00`;
+}
+
 function BookingModal({ open, onClose, roomId }: { open: boolean; onClose: () => void; roomId: string }) {
-  // Mặc định: khoảng 1 ngày nữa, đúng mốc 15 phút (hợp lệ ngay khi mở form).
-  const [slot, setSlot] = useState(() => vnInputValue(26, 15));
+  // Mặc định: khoảng 1 ngày nữa, đúng mốc 15 phút, trong khung 07:00-21:00 (hợp lệ ngay khi mở form).
+  const [slot, setSlot] = useState(defaultSlot);
+  // FE-15: tính lại mỗi lần mở (trang để lâu thì giá trị cũ có thể đã quá hạn hoặc đã được đặt).
+  useEffect(() => {
+    if (open) setSlot(defaultSlot());
+  }, [open]);
   const [note, setNote] = useState("");
   const qc = useQueryClient();
   const m = useMutation({
@@ -168,7 +183,7 @@ function BookingModal({ open, onClose, roomId }: { open: boolean; onClose: () =>
         </div>
       ) : (
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>
-          <Field label="Thời gian (giờ Việt Nam)" hint="Cách hiện tại ít nhất 2 giờ, tối đa 14 ngày tới.">
+          <Field label="Thời gian (giờ Việt Nam)" hint="Từ 07:00 đến 21:00, cách hiện tại ít nhất 2 giờ, tối đa 14 ngày tới.">
             {/* Trình duyệt tính bước 15 phút (step=900) từ min, nên min phải rơi đúng :00/:15/:30/:45. */}
             <Input type="datetime-local" required value={slot} min={vnInputValue(2, 15, "up")} max={vnInputValue(24 * 14, 15, "down")} step={900} onChange={(e) => setSlot(e.target.value)} />
           </Field>

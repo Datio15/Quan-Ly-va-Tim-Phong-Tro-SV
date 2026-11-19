@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiRaw } from "../api/client";
@@ -57,6 +57,8 @@ export default function SearchPage() {
   const [sp, setSp] = useSearchParams();
   const filters = useMemo(() => readFilters(sp), [sp]);
   const [q, setQ] = useState(filters.q);
+  // FE-05: URL đổi (bấm logo, nút Back, "Xóa lọc") thì ô từ khóa theo URL, không giữ chữ cũ.
+  useEffect(() => setQ(filters.q), [filters.q]);
   const [showFilters, setShowFilters] = useState(false);
   const [view, setView] = useState<"list" | "map">("list");
   const [hovered, setHovered] = useState<string | null>(null);

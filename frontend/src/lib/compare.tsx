@@ -13,6 +13,7 @@ interface CompareState {
   items: CompareItem[];
   has: (id: string) => boolean;
   toggle: (item: CompareItem) => boolean;
+  remove: (ids: string[]) => void;
   clear: () => void;
 }
 
@@ -52,8 +53,9 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     },
     [items],
   );
+  const remove = useCallback((ids: string[]) => setItems((cur) => cur.filter((i) => !ids.includes(i.id))), []);
   const clear = useCallback(() => setItems([]), []);
-  const value = useMemo(() => ({ items, has, toggle, clear }), [items, has, toggle, clear]);
+  const value = useMemo(() => ({ items, has, toggle, remove, clear }), [items, has, toggle, remove, clear]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

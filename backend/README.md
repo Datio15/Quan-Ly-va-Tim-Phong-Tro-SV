@@ -74,6 +74,15 @@ Theo quy ước mục 0, các điểm dưới đây chưa có trong SPEC v0.3, �
 7. Biến môi trường mới: `CORS_ORIGINS` (mặc định trống vì web và api cùng nguồn qua nginx), `REVIEW_SKIP_BOOKING_CHECK` (cờ demo của mục 9.4), `FORWARDED_ALLOW_IPS` (mạng tin cậy cho header `X-Forwarded-For`, mặc định dải nội bộ).
 8. Mã lỗi thêm: `RATE_LIMITED` (429), `INTERNAL_ERROR` (500).
 9. Gửi duyệt yêu cầu nhà đã có tọa độ (để tìm theo khoảng cách và bản đồ hoạt động).
+10. Gửi duyệt yêu cầu ít nhất 1 ảnh chưa bị loại; `approve` từ chối (422) nếu sau khi áp `image_ids_ok` phòng không còn ảnh đạt. `approve` một phòng `published` không có ảnh chờ thì không tăng `version` (báo cáo QA BE-09).
+11. `POST /landlord/invoices/{id}/void`: hủy hóa đơn `unpaid`/`overdue`; ràng buộc duy nhất (tenant, period) bỏ qua hóa đơn `void` nên tạo lại được (BE-04). Tạo hóa đơn bỏ qua khách có `end_date` trước tháng đó.
+12. Khách thuê: mỗi phòng một hợp đồng đang hiệu lực, mã lỗi mới `TENANT_EXISTS` (409); `people_count` ≤ `max_people` (BE-03). Chỉ số công tơ phải tăng dần theo kỳ, kỳ không quá tháng sau của hiện tại (BE-05).
+13. Lịch xem: mốc 15 phút, 07:00-21:00 giờ Việt Nam; sinh viên không có hai lịch cách nhau dưới 1 giờ (`BOOKING_CONFLICT`); không xác nhận lịch đã qua giờ; ghi chú khi sinh viên hủy được nối vào `student_note` (BE-08).
+14. `GET /images/{id}` không token chỉ trả ảnh đã duyệt của phòng đang công khai; trang chủ trọ/quản trị nhận URL có `?t=<token ký>` (hạn 1-2 giờ). Ảnh tải lên được Pillow kiểm tra và mã hóa lại (bỏ EXIF, dữ liệu thừa) (BE-10). URL ký trước file khách thuê hạn 60 giây (BE-11).
+15. `POST /rooms/compare` trả thêm `missing` (id không còn công khai); chỉ 404 khi còn dưới 2 phòng, kèm `details.missing` (FE-13). `POST /reports` trùng báo cáo còn mở của cùng người trả 200 với báo cáo cũ (BE-13).
+16. Tìm kiếm dự phòng CSDL: không phân biệt dấu, mọi từ phải khớp, có facet `area`/`amenities` như Azure; `price_min > price_max` trả 422 (BE-12).
+17. Đăng nhập chỉ đếm lần sai: 10/phút cho mỗi (IP, email), 50/phút cho mỗi IP; đăng ký 10 lần/10 phút/IP; báo cáo 20/giờ/tài khoản (BE-06). Mật khẩu đăng ký cần cả chữ và số, không bị cắt khoảng trắng; email kiểm tra chặt hơn; tên/tiêu đề không chứa `<` `>` (BE-07).
+18. Biến môi trường `API_DOCS` (mặc định `true`; đặt `false` trên VM để tắt `/api/docs`). Mọi thời gian trả về dạng `+07:00` (BE-14). Lỗi `DataError`/`IntegrityError` ở lệnh đọc trả 500 (lỗi phía máy chủ), chỉ lệnh ghi mới đổi thành 422.
 
 ## Migration CSDL
 
@@ -86,3 +95,4 @@ docker compose exec -T db psql -U phongtro_user -d phongtro_db -v ON_ERROR_STOP=
 | File | Nội dung |
 |---|---|
 | `2026-11-18-gioi-han-tien.sql` | `room_monthly_cost` tính bằng bigint rồi kẹp về int4 (BE-01); CHECK giới hạn tiền `rooms`, `cost_rates`, `tenants` (NOT VALID) |
+| `2026-11-19-sua-loi-qa.sql` | Extension `unaccent` (BE-12); unique (tenant, period) bỏ qua hóa đơn `void` (BE-04); unique một khách đang thuê mỗi phòng (BE-03, bỏ qua kèm NOTICE nếu dữ liệu cũ đang trùng) |

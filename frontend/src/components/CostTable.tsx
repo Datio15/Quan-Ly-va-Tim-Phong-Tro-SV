@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, errorMessage } from "../api/client";
 import type { CostBreakdown } from "../api/types";
 import { useConfig } from "../lib/catalog";
 import { vnd } from "../lib/format";
@@ -24,17 +24,18 @@ export default function CostTable({ roomId }: { roomId: string }) {
     return () => clearTimeout(t);
   }, [inputs]);
 
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, error } = useQuery({
     queryKey: ["cost", roomId, debounced],
     queryFn: () => api<CostBreakdown>(`/rooms/${roomId}/cost`, { query: debounced }),
     placeholderData: keepPreviousData,
   });
 
-  const fields: { key: keyof typeof inputs; label: string; step: number; min: number }[] = [
-    { key: "kwh", label: "Điện (kWh)", step: 10, min: 0 },
-    { key: "m3", label: "Nước (m³)", step: 1, min: 0 },
-    { key: "people", label: "Số người", step: 1, min: 1 },
-    { key: "vehicles", label: "Số xe", step: 1, min: 0 },
+  // FE-09: giới hạn khớp API (/rooms/{id}/cost) để không gửi giá trị bị từ chối rồi hiện số cũ.
+  const fields: { key: keyof typeof inputs; label: string; step: number; min: number; max: number }[] = [
+    { key: "kwh", label: "Điện (kWh)", step: 10, min: 0, max: 10000 },
+    { key: "m3", label: "Nước (m³)", step: 1, min: 0, max: 1000 },
+    { key: "people", label: "Số người", step: 1, min: 1, max: 20 },
+    { key: "vehicles", label: "Số xe", step: 1, min: 0, max: 20 },
   ];
 
   return (
@@ -46,15 +47,17 @@ export default function CostTable({ roomId }: { roomId: string }) {
             <Input
               type="number"
               min={f.min}
+              max={f.max}
               step={f.step}
               value={inputs[f.key]}
-              onChange={(e) => setInputs({ ...inputs, [f.key]: Math.max(f.min, Number(e.target.value) || 0) })}
+              onChange={(e) => setInputs({ ...inputs, [f.key]: Math.min(f.max, Math.max(f.min, Number(e.target.value) || 0)) })}
               className="mt-1"
             />
           </label>
         ))}
       </div>
-      <table className={`w-full text-sm ${isFetching ? "opacity-60" : ""}`}>
+      {error && <p className="mb-2 text-xs text-rose-600">{errorMessage(error)}</p>}
+      <table className={`w-full text-sm ${isFetching || error ? "opacity-60" : ""}`}>
         <tbody>
           {data?.lines.map((l) => (
             <tr key={l.code} className="border-b border-slate-100">

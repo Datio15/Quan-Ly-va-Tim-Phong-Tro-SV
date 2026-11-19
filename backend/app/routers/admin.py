@@ -1,6 +1,6 @@
 """Quản trị: duyệt tin, xác minh chủ trọ, báo cáo, trạng thái hệ thống, đồng bộ lại, sao lưu (F03, F14)."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import exists, func, select, update
@@ -62,6 +62,9 @@ def approve(
     if room.status not in ("pending", "published"):
         raise invalid_transition(f"Không thể duyệt phòng đang ở trạng thái {room.status}")
     pending_imgs = db.scalars(select(RoomImage).where(RoomImage.room_id == room.id, RoomImage.moderation == "pending")).all()
+    was_published = room.status == "published"
+    if was_published and not pending_imgs:
+        return _admin_room(db, room)  # không có ảnh chờ duyệt: không tăng version, không ghi outbox
     ok_ids = set(body.image_ids_ok) if body and body.image_ids_ok is not None else None
     for img in pending_imgs:
         if ok_ids is None or img.id in ok_ids:
@@ -69,7 +72,11 @@ def approve(
         else:
             img.moderation = "rejected"
             img.moderation_note = "Ảnh không đạt yêu cầu"
-    was_published = room.status == "published"
+    db.flush()
+    if not db.scalar(select(exists().where(RoomImage.room_id == room.id, RoomImage.moderation == "ok"))):
+        db.rollback()
+        # BE-09: tin công khai phải có ít nhất một ảnh đã duyệt.
+        raise AppError(422, "VALIDATION_ERROR", "Phòng cần ít nhất 1 ảnh đạt; hãy từ chối tin nếu mọi ảnh đều không đạt")
     if not was_published:
         room.status = "published"
         room.published_at = datetime.now(timezone.utc)
@@ -280,9 +287,23 @@ def resync(body: ResyncIn | None = Body(None), admin: User = Depends(require_adm
     return {"job_run_id": job.id, "reset_failed": reset, "enqueued": len(rooms)}
 
 
+STALE_JOB = timedelta(minutes=30)
+
+
 def _queue_job(db: Session, job: str, admin: User) -> dict:
+    # Khóa theo tên việc: hai lần bấm đồng thời không tạo hai dòng queued.
+    db.execute(select(func.pg_advisory_xact_lock(func.hashtext("job_runs:" + job))))
+    # BE-16: dòng queued/running bị bỏ lại (worker dừng giữa chừng) không được khóa chức năng mãi mãi.
+    db.execute(
+        update(JobRun)
+        .where(JobRun.job == job, JobRun.status.in_(["queued", "running"]),
+               JobRun.started_at < datetime.now(timezone.utc) - STALE_JOB)
+        .values(status="failed", finished_at=func.now(),
+                details=JobRun.details.op("||")(func.jsonb_build_object("error", "stale")))
+    )
     running = db.scalar(select(JobRun.id).where(JobRun.job == job, JobRun.status.in_(["queued", "running"])))
     if running:
+        db.commit()
         return {"job_run_id": running, "status": "already_queued"}
     jr = JobRun(job=job, status="queued", details={"requested_by": "admin"})
     db.add(jr)

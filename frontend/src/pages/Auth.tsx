@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Me, RoomCardData } from "../api/types";
@@ -10,7 +10,7 @@ import { homeFor, useAuth } from "../lib/auth";
 import { dateTime } from "../lib/format";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
@@ -20,6 +20,8 @@ export function LoginPage() {
     mutationFn: () => login(email, password),
     onSuccess: (me) => navigate(from || homeFor(me.role), { replace: true }),
   });
+  // FE-15: đã đăng nhập thì không hiện lại form đăng nhập.
+  if (user && !m.isPending && !m.isSuccess) return <Navigate to={homeFor(user.role)} replace />;
 
   return (
     <div className="mx-auto grid max-w-5xl items-center gap-8 py-6 lg:grid-cols-[1fr_380px]">
@@ -38,14 +40,15 @@ export function LoginPage() {
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">Chưa có tài khoản? <Link to="/register" className="text-brand-700 underline">Đăng ký</Link></p>
       </Card>
-      <p className="mt-4 text-center text-xs text-slate-400">Tài khoản demo: admin@, chutro1..4@, sinhvien1..6@example.com (mật khẩu SEED_DEMO_PASSWORD)</p>
+      {/* FE-15: gợi ý tài khoản demo chỉ hiện khi chạy dev (npm run dev), không có trong bản build triển khai. */}
+      {import.meta.env.DEV && <p className="mt-4 text-center text-xs text-slate-400">Tài khoản demo: admin@, chutro1..4@, sinhvien1..6@example.com (mật khẩu SEED_DEMO_PASSWORD)</p>}
       </div>
     </div>
   );
 }
 
 export function RegisterPage() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "", full_name: "", phone: "", role: "student" as "student" | "landlord" });
   const m = useMutation({
@@ -56,6 +59,7 @@ export function RegisterPage() {
     onSuccess: (me) => navigate(homeFor(me.role), { replace: true }),
   });
   const set = (k: keyof typeof form, v: string) => setForm({ ...form, [k]: v });
+  if (user && !m.isPending && !m.isSuccess) return <Navigate to={homeFor(user.role)} replace />;
 
   return (
     <div className="mx-auto max-w-md py-6">
@@ -74,7 +78,7 @@ export function RegisterPage() {
           <Field label="Họ tên"><Input required minLength={2} maxLength={100} value={form.full_name} onChange={(e) => set("full_name", e.target.value)} /></Field>
           <Field label="Email"><Input type="email" required value={form.email} onChange={(e) => set("email", e.target.value)} /></Field>
           <Field label="Số điện thoại (tùy chọn)"><Input inputMode="tel" pattern="\+?[0-9]{9,12}" value={form.phone} onChange={(e) => set("phone", e.target.value)} /></Field>
-          <Field label="Mật khẩu" hint="Tối thiểu 8 ký tự"><Input type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} /></Field>
+          <Field label="Mật khẩu" hint="Tối thiểu 8 ký tự, có cả chữ và số"><Input type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} /></Field>
           <ErrorBox error={m.error} />
           <Button type="submit" className="w-full" loading={m.isPending}>Đăng ký</Button>
         </form>

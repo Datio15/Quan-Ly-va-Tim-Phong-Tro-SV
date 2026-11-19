@@ -21,6 +21,8 @@ export default function MapView({ rooms, school, radiusM, highlightedId, classNa
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<{ markers: any[]; circle: any; popup: any }>({ markers: [], circle: null, popup: null });
+  const priceMarkers = useRef<Map<string, { marker: any; price: number }>>(new Map());
+  const highlightedRef = useRef<string | null>(highlightedId ?? null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -60,7 +62,9 @@ export default function MapView({ rooms, school, radiusM, highlightedId, classNa
     };
   }, [key]);
 
-  // Vẽ lại ghim khi danh sách phòng đổi
+  // Vẽ lại ghim và căn khung khi danh sách phòng / trường / bán kính đổi.
+  // KHÔNG phụ thuộc highlightedId: rê chuột lên thẻ phòng chỉ đổi màu ghim (effect bên dưới), không vẽ lại
+  // toàn bộ và không kéo bản đồ về khung ban đầu, giữ nguyên thao tác kéo/zoom của người dùng (FE-06).
   useEffect(() => {
     const map = mapRef.current;
     const atlas = window.atlas;
@@ -68,18 +72,19 @@ export default function MapView({ rooms, school, radiusM, highlightedId, classNa
     const st = layersRef.current;
     st.markers.forEach((m) => map.markers.remove(m));
     st.markers = [];
+    priceMarkers.current = new Map();
     const positions: [number, number][] = [];
 
     for (const r of rooms) {
       if (r.lat === null || r.lng === null) continue;
       const pos: [number, number] = [r.lng, r.lat];
       positions.push(pos);
-      const active = r.id === highlightedId;
       const marker = new atlas.HtmlMarker({
         position: pos,
-        htmlContent: `<div style="transform:translateY(-50%);padding:2px 8px;border-radius:999px;font:600 12px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25);background:${active ? "#f07a30" : "#185a62"};color:#fff">${shortVnd(r.price_month)}</div>`,
+        htmlContent: priceHtml(r.price_month, r.id === highlightedRef.current),
         anchor: "bottom",
       });
+      priceMarkers.current.set(r.id, { marker, price: r.price_month });
       map.events.add("click", marker, () => navigate(`/rooms/${r.id}`));
       map.events.add("mouseover", marker, () => {
         st.popup.setOptions({
@@ -112,7 +117,17 @@ export default function MapView({ rooms, school, radiusM, highlightedId, classNa
     } else if (positions.length === 1) {
       map.setCamera({ center: positions[0], zoom: 15 });
     }
-  }, [ready, rooms, school, radiusM, highlightedId, navigate]);
+  }, [ready, rooms, school, radiusM, navigate]);
+
+  // Chỉ đổi màu ghim đang được rê chuột.
+  useEffect(() => {
+    const prev = highlightedRef.current;
+    highlightedRef.current = highlightedId ?? null;
+    for (const id of [prev, highlightedId]) {
+      const m = id ? priceMarkers.current.get(id) : undefined;
+      if (m) m.marker.setOptions({ htmlContent: priceHtml(m.price, id === highlightedId) });
+    }
+  }, [highlightedId]);
 
   if (!key) {
     return (
@@ -123,10 +138,16 @@ export default function MapView({ rooms, school, radiusM, highlightedId, classNa
   }
   return (
     <div className={cx("relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100", className)}>
-      <div ref={el} className="absolute inset-0" />
+      {/* CSS của Azure Maps (tải sau Tailwind) đặt position: relative cho khung bản đồ, làm mất absolute inset-0
+         và khung cao 0px (bản đồ trắng). h-full w-full giữ kích thước dù position là gì. */}
+      <div ref={el} className="absolute inset-0 h-full w-full" />
       {error && <div className="absolute inset-0 flex items-center justify-center text-sm text-rose-600">{error}</div>}
     </div>
   );
+}
+
+function priceHtml(price: number, active: boolean) {
+  return `<div style="transform:translateY(-50%);padding:2px 8px;border-radius:999px;font:600 12px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25);background:${active ? "#f07a30" : "#185a62"};color:#fff">${shortVnd(price)}</div>`;
 }
 
 function escapeHtml(s: string) {

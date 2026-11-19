@@ -8,6 +8,9 @@
 
 BEGIN;
 
+-- Tìm kiếm dự phòng không phân biệt dấu (BE-12, migration 2026-11-19).
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 -- ---------- Kiểu liệt kê ----------
 CREATE TYPE user_role         AS ENUM ('student', 'landlord', 'admin');
 CREATE TYPE room_status       AS ENUM ('draft', 'pending', 'published', 'hidden', 'rejected');
@@ -236,6 +239,8 @@ CREATE TABLE tenants (
   CHECK (end_date IS NULL OR end_date >= start_date)
 );
 CREATE INDEX tenants_room_idx ON tenants (room_id) WHERE is_active;
+-- Mỗi phòng tối đa một hợp đồng đang hiệu lực (BE-03).
+CREATE UNIQUE INDEX tenants_one_active_per_room ON tenants (room_id) WHERE is_active;
 
 -- Chỉ số công tơ là số CỘNG DỒN; lượng dùng = kỳ này - kỳ trước.
 CREATE TABLE meter_readings (
@@ -273,9 +278,10 @@ CREATE TABLE invoices (
   paid_at            timestamptz,
   pdf_object_key     text,
   qr_payload         text,
-  created_at         timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, period)
+  created_at         timestamptz NOT NULL DEFAULT now()
 );
+-- Mỗi khách một hóa đơn mỗi tháng; hóa đơn đã hủy (void) không tính, để tạo lại được (BE-04).
+CREATE UNIQUE INDEX invoices_tenant_period_uq ON invoices (tenant_id, period) WHERE status <> 'void';
 CREATE INDEX invoices_status_due_idx ON invoices (status, due_date);
 
 -- ---------- Đồng bộ, việc nền, thông báo, nhật ký ----------

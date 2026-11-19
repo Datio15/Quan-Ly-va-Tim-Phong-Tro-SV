@@ -11,7 +11,7 @@ from ..db import get_db
 from ..errors import AppError, not_found
 from ..models import Booking, Favorite, Report, Review, Room, RoomImage, School, User
 from ..schemas import CompareIn, ReportIn, ReviewIn
-from ..security import get_optional_user, require_student
+from ..security import get_optional_user, report_rate_limit, require_student
 from ..services.cost import CostInputs, cost_breakdown
 from ..services.outbox import published_room_changed
 from ..services.rooms_public import SearchParams, fetch_public_rooms, image_url
@@ -57,6 +57,8 @@ def search(
         raise AppError(422, "VALIDATION_ERROR", "Sắp xếp theo khoảng cách cần chọn trường (school_id)")
     if max_distance_m is not None and school_id is None:
         raise AppError(422, "VALIDATION_ERROR", "Lọc theo khoảng cách cần chọn trường (school_id)")
+    if price_min is not None and price_max is not None and price_min > price_max:
+        raise AppError(422, "VALIDATION_ERROR", "Giá tối thiểu lớn hơn giá tối đa", {"field": "price_min"})
     school = _school(db, school_id)
     params = SearchParams(
         q=(q or "").strip() or None,
@@ -136,8 +138,11 @@ def compare(body: CompareIn, db: Session = Depends(get_db)):
         raise AppError(422, "VALIDATION_ERROR", "Cần 2-3 phòng khác nhau để so sánh")
     school = _school(db, body.school_id)
     rooms = fetch_public_rooms(db, ids, (school.lat, school.lng) if school else None)
-    if len(rooms) != len(ids):
-        raise not_found("Có phòng không tồn tại hoặc không còn công khai")
+    found = {r["id"] for r in rooms}
+    missing = [str(i) for i in ids if str(i) not in found]
+    if len(rooms) < 2:
+        # FE-13: nói rõ phòng nào không còn công khai để giao diện tự bỏ khỏi danh sách so sánh.
+        raise AppError(404, "NOT_FOUND", "Không đủ 2 phòng còn công khai để so sánh", {"missing": missing})
     out = [
         {
             "id": r["id"], "title": r["title"], "price_month": r["price_month"], "est_monthly_cost": r["est_monthly_cost"],
@@ -159,6 +164,7 @@ def compare(body: CompareIn, db: Session = Depends(get_db)):
 
     return {
         "rooms": out,
+        "missing": missing,
         "best": {
             "price_month": best("price_month", True),
             "est_monthly_cost": best("est_monthly_cost", True),
@@ -236,7 +242,16 @@ def put_review(room_id: uuid.UUID, body: ReviewIn, user: User = Depends(require_
 
 # ---------- Báo cáo ----------
 @router.post("/reports", status_code=201)
-def create_report(body: ReportIn, user: User = Depends(require_student), db: Session = Depends(get_db)):
+def create_report(body: ReportIn, response: Response, user: User = Depends(require_student), db: Session = Depends(get_db)):
+    report_rate_limit.check(str(user.id))  # theo tài khoản, không theo IP (nhiều sinh viên chung IP)
+    report_rate_limit.hit(str(user.id))
+    # BE-13: cùng người, cùng đối tượng, báo cáo cũ còn mở thì trả lại báo cáo đó thay vì tạo thêm.
+    existing = db.scalars(select(Report).where(
+        Report.reporter_id == user.id, Report.target_type == body.target_type,
+        Report.target_id == body.target_id, Report.status == "open")).first()
+    if existing:
+        response.status_code = 200
+        return {"id": str(existing.id), "status": existing.status, "duplicate": True}
     if body.target_type == "room":
         target = db.get(Room, body.target_id)
         ok = target is not None and target.status == "published"

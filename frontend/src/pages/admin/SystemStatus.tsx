@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { JobRun, SystemStatus } from "../../api/types";
@@ -127,9 +127,13 @@ function JobWatcher({ id, onDone }: { id: number; onDone: () => void }) {
     refetchInterval: (query) => (query.state.data && ["success", "failed"].includes(query.state.data.status) ? false : 3000),
   });
   const finished = q.data && ["success", "failed"].includes(q.data.status);
+  // FE-07: onDone là hàm mới mỗi lần trang cha render; nếu đặt vào deps, effect gọi lại liên tục
+  // (làm mới -> render -> onDone mới -> làm mới...). Giữ bản mới nhất trong ref, chỉ chạy khi `finished` đổi.
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
   useEffect(() => {
-    if (finished) onDone();
-  }, [finished, onDone]);
+    if (finished) onDoneRef.current();
+  }, [finished]);
   if (!q.data) return null;
   const j = q.data;
   return (

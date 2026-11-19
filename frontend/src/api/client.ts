@@ -102,6 +102,17 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
   return (await res.json()) as T;
 }
 
+/** Lấy mọi trang của một API phân trang (page_size tối đa 50), dùng cho ô chọn cần đủ danh sách (FE-10). */
+export async function apiAll<T>(path: string, query: Query = {}, maxPages = 20): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await api<{ items: T[]; total: number }>(path, { query: { ...query, page, page_size: 50 } });
+    items.push(...res.items);
+    if (items.length >= res.total || res.items.length === 0) break;
+  }
+  return items;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     const fields = (err.details?.fields as { loc: string[]; msg: string }[] | undefined) || [];

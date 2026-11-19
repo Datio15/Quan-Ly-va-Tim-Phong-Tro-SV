@@ -23,8 +23,10 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="EasyRent API", version="0.3.0", lifespan=lifespan, docs_url="/api/docs",
-              openapi_url="/api/openapi.json", redoc_url=None)
+# API_DOCS=false trên VM thật để không công khai Swagger/OpenAPI (BE-17).
+app = FastAPI(title="EasyRent API", version="0.3.0", lifespan=lifespan,
+              docs_url="/api/docs" if settings.api_docs else None,
+              openapi_url="/api/openapi.json" if settings.api_docs else None, redoc_url=None)
 install_error_handlers(app)
 setup_telemetry(app)
 
@@ -42,6 +44,8 @@ async def timing(request: Request, call_next):
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - started) * 1000
     response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
+    # Trình duyệt không đoán lại kiểu nội dung (ảnh/file tải lên không bị coi là HTML) – BE-10.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
     if elapsed_ms > 2000:
         # Chỉ ghi đường dẫn mẫu (route), không ghi query string vì có thể chứa dữ liệu người dùng.
         route = request.scope.get("route")

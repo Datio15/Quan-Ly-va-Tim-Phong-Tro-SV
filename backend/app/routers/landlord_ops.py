@@ -1,7 +1,7 @@
 """Chủ trọ: khách thuê, hợp đồng (file GIẢ), chỉ số điện nước, hóa đơn (F16, F17)."""
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -16,8 +16,8 @@ from ..models import House, Invoice, MeterReading, Room, Tenant, User
 from ..schemas import InvoiceGenerateIn, MeterReadingIn, TenantIn, TenantPatch, parse_month
 from ..security import create_signed_token, require_landlord
 from ..services import storage
-from ..services.invoices import generate_for_landlord
-from .common import Page, audit, iso, owned_room, paginate
+from ..services.invoices import generate_for_landlord, next_month
+from .common import VN, Page, audit, iso, owned_room, paginate
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -63,11 +63,24 @@ def list_tenants(
     return page.wrap([tenant_out(t) for t in rows], total)
 
 
+def _check_occupancy(db: Session, room: Room, people_count: int, exclude_tenant: uuid.UUID | None = None) -> None:
+    """BE-03: mỗi phòng một hợp đồng đang hiệu lực (hóa đơn tính đủ tiền phòng cho từng khách),
+    số người không vượt sức chứa của phòng. Gọi khi đã khóa dòng phòng (FOR UPDATE)."""
+    if people_count > room.max_people:
+        raise AppError(422, "VALIDATION_ERROR", f"Phòng chỉ cho tối đa {room.max_people} người", {"field": "people_count"})
+    stmt = select(Tenant.id).where(Tenant.room_id == room.id, Tenant.is_active.is_(True))
+    if exclude_tenant:
+        stmt = stmt.where(Tenant.id != exclude_tenant)
+    if db.scalar(stmt.limit(1)):
+        raise AppError(409, "TENANT_EXISTS", "Phòng đang có khách thuê; hãy kết thúc hợp đồng cũ trước")
+
+
 @router.post("/tenants", status_code=201)
 def create_tenant(body: TenantIn, user: User = Depends(require_landlord), db: Session = Depends(get_db)):
-    owned_room(db, body.room_id, user)
+    room = owned_room(db, body.room_id, user, lock=True)
     if body.end_date and body.end_date < body.start_date:
         raise AppError(422, "VALIDATION_ERROR", "Ngày kết thúc phải sau ngày bắt đầu")
+    _check_occupancy(db, room, body.people_count)
     t = Tenant(**body.model_dump())
     db.add(t)
     db.flush()
@@ -80,12 +93,16 @@ def create_tenant(body: TenantIn, user: User = Depends(require_landlord), db: Se
 @router.patch("/tenants/{tenant_id}")
 def update_tenant(tenant_id: uuid.UUID, body: TenantPatch, user: User = Depends(require_landlord), db: Session = Depends(get_db)):
     t = _owned_tenant(db, tenant_id, user)
-    for key, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+    for key, value in data.items():
         if value is None and key not in ("phone", "email", "end_date"):
             continue
         setattr(t, key, value)
     if t.end_date and t.end_date < t.start_date:
         raise AppError(422, "VALIDATION_ERROR", "Ngày kết thúc phải sau ngày bắt đầu")
+    if t.is_active and ("is_active" in data or "people_count" in data):
+        room = owned_room(db, t.room_id, user, lock=True)
+        _check_occupancy(db, room, t.people_count, exclude_tenant=t.id)
     db.commit()
     db.refresh(t)
     return tenant_out(t)
@@ -137,8 +154,9 @@ def tenant_file_url(
     key = t.id_card_object_key if kind == "id_card" else t.contract_object_key
     if not key:
         raise not_found("Chưa có file")
-    token = create_signed_token("private-file", {"key": key}, minutes=5)
-    return {"url": f"/api/v1/files/signed?token={token}", "expires_in": 300}
+    # BE-11: hạn 1 phút (trình duyệt mở ngay sau khi nhận); nginx che query string trong log.
+    token = create_signed_token("private-file", {"key": key}, minutes=1)
+    return {"url": f"/api/v1/files/signed?token={token}", "expires_in": 60}
 
 
 # ---------- Chỉ số công tơ ----------
@@ -157,10 +175,32 @@ def list_readings(room_id: uuid.UUID, user: User = Depends(require_landlord), db
     return [reading_out(m) for m in rows]
 
 
+def _check_reading(db: Session, room_id: uuid.UUID, period, e: float, w: float) -> None:
+    """BE-05: chỉ số là số cộng dồn nên phải tăng dần theo kỳ; kỳ không vượt quá tháng sau của hiện tại."""
+    today = datetime.now(VN).date()
+    if period > next_month(today.replace(day=1)):
+        raise AppError(422, "VALIDATION_ERROR", "Chưa nhập được chỉ số cho kỳ quá xa trong tương lai", {"field": "month"})
+    prev = db.scalars(select(MeterReading).where(MeterReading.room_id == room_id, MeterReading.period < period)
+                      .order_by(MeterReading.period.desc()).limit(1)).first()
+    nxt = db.scalars(select(MeterReading).where(MeterReading.room_id == room_id, MeterReading.period > period)
+                     .order_by(MeterReading.period.asc()).limit(1)).first()
+    for other, later in ((prev, False), (nxt, True)):
+        if other is None:
+            continue
+        oe, ow = float(other.electricity_index), float(other.water_index)
+        bad = (e > oe or w > ow) if later else (e < oe or w < ow)
+        if bad:
+            rel = "lớn hơn" if later else "nhỏ hơn"
+            raise AppError(422, "VALIDATION_ERROR",
+                           f"Chỉ số {rel} kỳ {other.period:%m/%Y} (điện {oe:g}, nước {ow:g}); chỉ số công tơ phải tăng dần",
+                           {"field": "electricity_index", "other_month": other.period.strftime("%Y-%m")})
+
+
 @router.post("/meter-readings", status_code=201)
 def upsert_reading(body: MeterReadingIn, user: User = Depends(require_landlord), db: Session = Depends(get_db)):
-    owned_room(db, body.room_id, user)
+    owned_room(db, body.room_id, user, lock=True)
     period = parse_month(body.month)
+    _check_reading(db, body.room_id, period, body.electricity_index, body.water_index)
     stmt = (
         pg_insert(MeterReading)
         .values(room_id=body.room_id, period=period, electricity_index=body.electricity_index,
@@ -241,6 +281,25 @@ def mark_paid(invoice_id: uuid.UUID, user: User = Depends(require_landlord), db:
         raise invalid_transition(f"Không thể đánh dấu đã trả cho hóa đơn {inv.status}")
     inv.status = "paid"
     inv.paid_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(inv)
+    return invoice_out(inv)
+
+
+@router.post("/invoices/{invoice_id}/void")
+def void_invoice(invoice_id: uuid.UUID, user: User = Depends(require_landlord), db: Session = Depends(get_db)):
+    """Đề xuất bổ sung SPEC (BE-04): hủy hóa đơn chưa trả (nhập sai chỉ số...). Sau khi hủy, tạo lại được
+    hóa đơn cùng tháng cho khách đó (ràng buộc duy nhất (tenant, period) bỏ qua hóa đơn void)."""
+    inv = db.scalars(
+        select(Invoice).join(Room, Room.id == Invoice.room_id).join(House, House.id == Room.house_id)
+        .where(Invoice.id == invoice_id, House.landlord_id == user.id).with_for_update(of=Invoice)
+    ).first()
+    if inv is None:
+        raise not_found("Không tìm thấy hóa đơn")
+    if inv.status not in ("unpaid", "overdue"):
+        raise invalid_transition(f"Không thể hủy hóa đơn {inv.status}")
+    inv.status = "void"
+    audit(db, user, "invoice.void", "invoice", inv.id)
     db.commit()
     db.refresh(inv)
     return invoice_out(inv)
