@@ -73,6 +73,47 @@ def sniff_image(data: bytes) -> tuple[str, str] | None:
     return None
 
 
+MAX_IMAGE_PIXELS = 40_000_000  # ~ 8000 x 5000; lớn hơn coi như ảnh "bom giải nén"
+
+
+def normalize_image(data: bytes) -> tuple[bytes, str, str] | None:
+    """Mở ảnh bằng Pillow, kiểm tra hợp lệ rồi MÃ HÓA LẠI (BE-10).
+
+    Chữ ký đầu file đúng là chưa đủ: file rác có 3 byte JPEG, hay PNG kèm HTML ở đuôi vẫn lọt.
+    Mã hóa lại loại bỏ dữ liệu thừa và metadata (EXIF có thể chứa tọa độ GPS nơi chụp).
+    Trả (dữ liệu, content-type, đuôi) hoặc None nếu không phải ảnh JPEG/PNG hợp lệ.
+    """
+    import warnings
+
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    kind = sniff_image(data)
+    if kind is None:
+        return None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as probe:
+                if probe.format not in ("JPEG", "PNG"):
+                    return None
+                if probe.width * probe.height > MAX_IMAGE_PIXELS:
+                    return None
+                probe.verify()
+            with Image.open(io.BytesIO(data)) as img:
+                img = ImageOps.exif_transpose(img)  # giữ đúng chiều ảnh chụp điện thoại khi bỏ EXIF
+                out = io.BytesIO()
+                if kind[1] == "jpg":
+                    img.convert("RGB").save(out, format="JPEG", quality=88, optimize=True)
+                else:
+                    if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                        img = img.convert("RGBA")
+                    img.save(out, format="PNG", optimize=True)
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError, Image.DecompressionBombError,
+            Image.DecompressionBombWarning):
+        return None
+    return out.getvalue(), kind[0], kind[1]
+
+
 def sniff_document(data: bytes) -> tuple[str, str] | None:
     if data[:5] == b"%PDF-":
         return "application/pdf", "pdf"

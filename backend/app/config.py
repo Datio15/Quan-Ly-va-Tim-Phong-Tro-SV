@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     # Đề xuất bổ sung SPEC (xem backend/README.md)
     cors_origins: str = ""                  # danh sách nguồn, phân tách bằng dấu phẩy
     review_skip_booking_check: bool = False  # bật để demo đánh giá không cần lịch 'done'
+    api_docs: bool = True                   # false trên VM thật: tắt /api/docs và /api/openapi.json
 
     @property
     def database_url(self) -> str:

@@ -1,6 +1,6 @@
 """Tiện ích dùng chung cho router: phân trang, tìm tài nguyên theo quyền sở hữu, nhật ký."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Query
 from sqlalchemy import func, select
@@ -29,8 +29,15 @@ def paginate(db: Session, stmt, page: Page):
     return rows, total or 0
 
 
+VN = timezone(timedelta(hours=7))  # Asia/Ho_Chi_Minh, không có giờ mùa hè
+
+
 def iso(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt else None
+    """ISO 8601 theo giờ Việt Nam (+07:00) cho mọi phản hồi (SPEC 10.1). Giá trị vừa gán bằng
+    datetime.now(timezone.utc) cũng được đổi, nên không còn lẫn +00:00 và +07:00 (BE-14)."""
+    if dt is None:
+        return None
+    return (dt.astimezone(VN) if dt.tzinfo else dt).isoformat()
 
 
 def owned_house(db: Session, house_id: uuid.UUID, landlord: User) -> House:

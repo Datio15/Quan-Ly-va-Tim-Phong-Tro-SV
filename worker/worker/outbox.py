@@ -55,6 +55,9 @@ def _sync_room_images(db: Session, room_id: str) -> list[str]:
         return []
 
     need_upload = [r for r in rows if not r["public_url"]]
+    if need_upload and not _is_set(os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")):
+        logger.warning("[Outbox] Chưa cấu hình AZURE_STORAGE_CONNECTION_STRING: bỏ qua %d ảnh chưa đồng bộ", len(need_upload))
+        return [r["public_url"] for r in rows if r["public_url"]]
     minio_client = _get_minio_client() if need_upload else None
     container_client = _get_blob_container_client() if need_upload else None
     src_bucket = os.getenv("MINIO_BUCKET_PUBLIC_SRC", "public-src")
@@ -96,15 +99,25 @@ def _sync_room_images(db: Session, room_id: str) -> list[str]:
     return urls
 
 
-def _delete_room_blobs(room_id: str) -> None:
-    """Xóa toàn bộ ảnh của phòng trên Azure Blob public-images khi phòng bị gỡ/ẩn."""
+def _is_set(value: str) -> bool:
+    """Cùng quy tắc với api (app/config.py): CHANGE_ME hoặc chứa SUFFIX là giá trị giữ chỗ."""
+    return bool(value) and value != "CHANGE_ME" and "SUFFIX" not in value
+
+
+def _delete_room_blobs(db: Session, room_id: str) -> None:
+    """Xóa toàn bộ ảnh của phòng trên Azure Blob public-images khi phòng bị gỡ/ẩn.
+
+    Đồng thời xóa room_images.public_url: nếu không, khi phòng hiện lại, _sync_room_images thấy ảnh
+    "đã có URL" nên không tải lại, chỉ mục và trang web trỏ vào blob đã bị xóa (ảnh hỏng).
+    """
     conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
-    if not conn_str:
+    if not _is_set(conn_str):
         return
     container_client = _get_blob_container_client()
     prefix = f"rooms/{room_id}/"
     for blob in container_client.list_blobs(name_starts_with=prefix):
         container_client.delete_blob(blob.name)
+    db.execute(text("UPDATE room_images SET public_url = NULL WHERE room_id = :rid"), {"rid": room_id})
 
 
 def _build_public_document(db: Session, room_row: Any, image_urls: list[str]) -> dict[str, Any]:
@@ -165,7 +178,7 @@ def process_sync_outbox() -> None:
     max_attempts = int(os.getenv("OUTBOX_MAX_ATTEMPTS", "10"))
 
     # SPEC mục 12.1: Tạm dừng nếu chưa có khóa hàm thật, không tăng attempts
-    if not func_url or not func_key or func_key == "CHANGE_ME":
+    if not _is_set(func_url) or not _is_set(func_key):
         if not _warned_missing_key:
             logger.warning("[Outbox] Tạm dừng đồng bộ vì chưa cấu hình AZURE_FUNCTION_URL/KEY.")
             _warned_missing_key = True
@@ -229,7 +242,7 @@ def process_sync_outbox() -> None:
                     doc = _build_public_document(db, room_row, image_urls)
                     payload = {"op": "upsert", "room": doc}
                 else:
-                    _delete_room_blobs(room_id)
+                    _delete_room_blobs(db, room_id)
                     payload = {"op": "delete", "room": {"id": room_id, "version": version}}
 
                 # 4. Gọi Azure Function ingest-room

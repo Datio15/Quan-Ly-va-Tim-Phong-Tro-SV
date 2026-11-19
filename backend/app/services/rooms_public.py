@@ -40,13 +40,21 @@ class SearchParams:
         return self.school_lat is not None and self.school_lng is not None
 
 
-def image_url(image_id: uuid.UUID | str | None, public_url: str | None) -> str | None:
-    """Ảnh đã đồng bộ thì dùng URL Blob; chưa đồng bộ thì phục vụ qua api (đề xuất bổ sung SPEC)."""
+def image_url(image_id: uuid.UUID | str | None, public_url: str | None, signed: bool = False) -> str | None:
+    """Ảnh đã đồng bộ thì dùng URL Blob; chưa đồng bộ thì phục vụ qua api (đề xuất bổ sung SPEC).
+
+    `signed=True` cho trang của chủ trọ/quản trị: ảnh chờ duyệt hoặc của phòng chưa công khai chỉ mở được
+    bằng URL có token ký (BE-10); không có token thì api chỉ trả ảnh đã duyệt của phòng đang công khai.
+    """
     if public_url:
         return public_url
-    if image_id:
-        return f"/api/v1/images/{image_id}"
-    return None
+    if not image_id:
+        return None
+    if signed:
+        from ..security import create_hourly_token
+
+        return f"/api/v1/images/{image_id}?t={create_hourly_token('image', {'img': str(image_id)})}"
+    return f"/api/v1/images/{image_id}"
 
 
 def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> int:
@@ -135,10 +143,13 @@ def search_db(db: Session, p: SearchParams) -> dict:
     binds = []
 
     if p.q:
-        where.append(
-            "(v.title ILIKE :q OR v.description ILIKE :q OR v.street ILIKE :q OR v.ward ILIKE :q OR v.area ILIKE :q)"
-        )
-        params["q"] = f"%{p.q.replace('%', r'\%').replace('_', r'\_')}%"
+        # BE-12: không phân biệt dấu ("cau giay" khớp "Cầu Giấy"), tách theo khoảng trắng và yêu cầu MỌI từ
+        # có mặt ở tiêu đề/mô tả/đường/phường/khu vực. Cần extension unaccent (migration 2026-11-19).
+        haystack = "unaccent(lower(concat_ws(' ', v.title, v.description, v.street, v.ward, v.area)))"
+        for i, token in enumerate(p.q.split()[:8]):
+            where.append(f"{haystack} LIKE unaccent(lower(:q{i})) ESCAPE '\\'")
+            escaped = token.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+            params[f"q{i}"] = f"%{escaped}%"
     if p.price_min is not None:
         where.append("v.price_month >= :price_min")
         params["price_min"] = p.price_min
@@ -197,17 +208,27 @@ def search_db(db: Session, p: SearchParams) -> dict:
         stmt = stmt.bindparams(*binds)
     rows = db.execute(stmt, params).mappings().all()
     total = rows[0]["_total"] if rows else 0
+    filtered_sql = _BASE_SELECT.format(distance_col=distance_col, count_col="", where="".join(f" AND {w}" for w in where))
+
+    def run(sql_text: str):
+        s = text(sql_text)
+        return db.execute(s.bindparams(*binds) if binds else s, params)
+
     if not rows and p.page > 1:
         # trang vượt quá: vẫn cần tổng số
-        count_sql = _BASE_SELECT.format(distance_col=distance_col, count_col="", where="".join(f" AND {w}" for w in where))
-        cstmt = text(f"SELECT count(*) FROM ({count_sql}) s")
-        if binds:
-            cstmt = cstmt.bindparams(*binds)
-        total = db.execute(cstmt, params).scalar_one()
+        total = run(f"SELECT count(*) FROM ({filtered_sql}) s").scalar_one()
+    # FE-12: facet giống Azure (area tối đa 10, amenities tối đa 20) để bộ lọc có đủ khu vực và số đếm.
+    area_facet = run(
+        f"SELECT s.area AS value, count(*) AS count FROM ({filtered_sql}) s GROUP BY s.area ORDER BY count DESC, value LIMIT 10"
+    ).mappings().all()
+    amen_facet = run(
+        f"SELECT a AS value, count(*) AS count FROM ({filtered_sql}) s CROSS JOIN LATERAL unnest(s.amenities) a "
+        "GROUP BY a ORDER BY count DESC, value LIMIT 20"
+    ).mappings().all()
     return {
         "items": [_row_to_item(r) for r in rows],
         "page": p.page,
         "page_size": p.page_size,
         "total": total,
-        "facets": {"area": [], "amenities": []},
+        "facets": {"area": [dict(r) for r in area_facet], "amenities": [dict(r) for r in amen_facet]},
     }

@@ -52,6 +52,13 @@ def create_signed_token(purpose: str, data: dict, minutes: int = 5) -> str:
     return jwt.encode(payload, _secret(), algorithm="HS256")
 
 
+def create_hourly_token(purpose: str, data: dict) -> str:
+    """Token ký có hạn tròn giờ (1-2 giờ): cùng dữ liệu cho cùng URL trong một giờ để trình duyệt cache được ảnh."""
+    now = int(time.time())
+    exp = now - now % 3600 + 7200
+    return jwt.encode({"purpose": purpose, **data, "exp": exp}, _secret(), algorithm="HS256")
+
+
 def decode_signed_token(token: str, purpose: str) -> dict:
     try:
         payload = jwt.decode(token, _secret(), algorithms=["HS256"])
@@ -107,25 +114,68 @@ require_landlord = require_role("landlord")
 require_admin = require_role("admin")
 
 
-class RateLimiter:
-    """Giới hạn tần suất đơn giản trong bộ nhớ (mỗi tiến trình api): N lần / cửa sổ / IP."""
+def client_ip(request: Request) -> str:
+    # request.client đã được uvicorn --proxy-headers thay bằng IP thật từ nginx (X-Forwarded-For),
+    # chỉ khi yêu cầu đến từ mạng tin cậy (FORWARDED_ALLOW_IPS). Không đọc header trực tiếp để tránh giả mạo.
+    return request.client.host if request.client else "unknown"
 
-    def __init__(self, limit: int, window_seconds: int):
+
+class RateLimiter:
+    """Giới hạn tần suất trong bộ nhớ (mỗi tiến trình api): tối đa N lần / cửa sổ / khóa.
+
+    Khóa hết hạn được xóa khỏi bộ nhớ (BE-06: trước đây mỗi IP từng gọi giữ một mục mãi mãi).
+    """
+
+    def __init__(self, limit: int, window_seconds: int, message: str = "Thử quá nhiều lần, vui lòng đợi một phút"):
         self.limit = limit
         self.window = window_seconds
+        self.message = message
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._calls = 0
 
-    def __call__(self, request: Request) -> None:
-        # request.client đã được uvicorn --proxy-headers thay bằng IP thật từ nginx (X-Forwarded-For),
-        # chỉ khi yêu cầu đến từ mạng tin cậy (FORWARDED_ALLOW_IPS). Không đọc header trực tiếp để tránh giả mạo.
-        ip = request.client.host if request.client else "unknown"
-        now = time.monotonic()
-        hits = self._hits[ip]
+    def _fresh(self, key: str, now: float) -> deque[float]:
+        hits = self._hits[key]
         while hits and now - hits[0] > self.window:
             hits.popleft()
-        if len(hits) >= self.limit:
-            raise AppError(429, "RATE_LIMITED", "Thử quá nhiều lần, vui lòng đợi một phút")
-        hits.append(now)
+        return hits
+
+    def _sweep(self, now: float) -> None:
+        self._calls += 1
+        if self._calls % 500:
+            return
+        for key in list(self._hits):
+            if not self._fresh(key, now):
+                del self._hits[key]
+
+    def blocked(self, key: str) -> bool:
+        now = time.monotonic()
+        self._sweep(now)
+        hits = self._fresh(key, now)
+        if not hits:
+            del self._hits[key]
+            return False
+        return len(hits) >= self.limit
+
+    def hit(self, key: str) -> None:
+        self._fresh(key, time.monotonic()).append(time.monotonic())
+
+    def reset(self, key: str) -> None:
+        self._hits.pop(key, None)
+
+    def check(self, key: str) -> None:
+        if self.blocked(key):
+            raise AppError(429, "RATE_LIMITED", self.message)
+
+    def __call__(self, request: Request) -> None:
+        """Dùng làm dependency: đếm MỌI lần gọi theo IP."""
+        key = client_ip(request)
+        self.check(key)
+        self.hit(key)
 
 
-login_rate_limit = RateLimiter(limit=10, window_seconds=60)
+# Đăng nhập chỉ đếm lần SAI (BE-06): 10 lần sai/phút cho mỗi cặp (IP, email), và 50 lần sai/phút cho mỗi IP
+# (nhiều sinh viên dùng chung một IP NAT của trường/KTX không khóa lẫn nhau khi đăng nhập đúng).
+login_fail_account = RateLimiter(limit=10, window_seconds=60)
+login_fail_ip = RateLimiter(limit=50, window_seconds=60)
+register_rate_limit = RateLimiter(limit=10, window_seconds=600, message="Đăng ký quá nhiều lần, vui lòng thử lại sau")
+report_rate_limit = RateLimiter(limit=20, window_seconds=3600, message="Gửi quá nhiều báo cáo, vui lòng thử lại sau")

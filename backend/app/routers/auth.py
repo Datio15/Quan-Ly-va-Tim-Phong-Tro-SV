@@ -3,7 +3,7 @@ import secrets
 import string
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,15 +13,18 @@ from ..db import get_db
 from ..errors import AppError
 from ..models import User
 from ..schemas import LoginIn, MePatch, RegisterIn
-from ..security import create_access_token, get_current_user, hash_password, login_rate_limit, verify_password
-from .common import user_out
+from ..security import (
+    client_ip, create_access_token, get_current_user, hash_password, login_fail_account, login_fail_ip,
+    register_rate_limit, verify_password,
+)
+from .common import iso, user_out
 
 log = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter(tags=["auth"])
 
 
-@router.post("/auth/register", status_code=201)
+@router.post("/auth/register", status_code=201, dependencies=[Depends(register_rate_limit)])
 def register(body: RegisterIn, db: Session = Depends(get_db)):
     if db.scalar(select(User.id).where(func.lower(User.email) == body.email)):
         raise AppError(409, "EMAIL_TAKEN", "Email này đã được đăng ký")
@@ -42,11 +45,26 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     return {"id": str(user.id), "email": user.email, "role": user.role}
 
 
-@router.post("/auth/login", dependencies=[Depends(login_rate_limit)])
-def login(body: LoginIn, db: Session = Depends(get_db)):
+def _password_ok(password: str, password_hash: str) -> bool:
+    if verify_password(password, password_hash):
+        return True
+    # Trước đây mật khẩu bị cắt khoảng trắng hai đầu khi đăng ký: vẫn cho đăng nhập bằng cách gõ cũ.
+    stripped = password.strip()
+    return stripped != password and verify_password(stripped, password_hash)
+
+
+@router.post("/auth/login")
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    account_key = f"{ip}|{body.email}"
+    login_fail_ip.check(ip)
+    login_fail_account.check(account_key)
     user = db.scalars(select(User).where(func.lower(User.email) == body.email)).first()
-    if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+    if user is None or not user.is_active or not _password_ok(body.password, user.password_hash):
+        login_fail_ip.hit(ip)
+        login_fail_account.hit(account_key)
         raise AppError(401, "UNAUTHORIZED", "Email hoặc mật khẩu không đúng")
+    login_fail_account.reset(account_key)
     token, expires_in = create_access_token(user)
     return {
         "access_token": token,
@@ -87,6 +105,6 @@ def telegram_link(user: User = Depends(get_current_user), db: Session = Depends(
     db.commit()
     return {
         "url": f"https://t.me/{settings.telegram_bot_name}?start={code}",
-        "expires_at": expires.isoformat(),
+        "expires_at": iso(expires),
         "linked": bool(user.telegram_chat_id),
     }

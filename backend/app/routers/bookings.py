@@ -19,6 +19,7 @@ router = APIRouter(prefix="/bookings", tags=["bookings"])
 MIN_LEAD = timedelta(hours=2)
 MAX_AHEAD = timedelta(days=14)
 MAX_REQUESTED = 3
+SELF_GAP = timedelta(hours=1)
 
 
 def booking_out(b: Booking, viewer: User) -> dict:
@@ -69,6 +70,12 @@ def create_booking(body: BookingIn, user: User = Depends(require_student), db: S
     pending = db.scalar(select(func.count()).where(Booking.student_id == user.id, Booking.status == "requested"))
     if pending >= MAX_REQUESTED:
         raise AppError(409, "BOOKING_LIMIT", "Bạn đã có 3 lịch đang chờ xác nhận")
+    # BE-08: một sinh viên không hẹn hai nơi trong cùng khoảng một giờ.
+    clash = db.scalar(select(Booking.slot_start).where(
+        Booking.student_id == user.id, Booking.status.in_(["requested", "confirmed"]),
+        Booking.slot_start > slot - SELF_GAP, Booking.slot_start < slot + SELF_GAP).limit(1))
+    if clash:
+        raise AppError(409, "BOOKING_CONFLICT", f"Bạn đã có lịch xem phòng lúc {iso(clash)[11:16]} cùng ngày, cách chưa tới 1 giờ")
     booking = Booking(room_id=room.id, student_id=user.id, slot_start=slot, student_note=body.student_note)
     db.add(booking)
     try:
@@ -113,6 +120,10 @@ def _load(db: Session, booking_id: uuid.UUID, user: User) -> Booking:
 def _transition(db: Session, b: Booking, user: User, to: str, note: str | None) -> dict:
     if note and user.role == "landlord":
         b.landlord_note = note
+    elif note and user.role == "student" and to == "cancelled":
+        # BE-08: lý do hủy của sinh viên trước đây bị bỏ âm thầm; nối vào ghi chú của sinh viên.
+        b.student_note = (f"{b.student_note}\n" if b.student_note else "") + f"Lý do hủy: {note}"
+        b.student_note = b.student_note[:1000]
     b.status = to
     db.commit()
     db.refresh(b)
@@ -124,6 +135,8 @@ def confirm(booking_id: uuid.UUID, body: BookingAction | None = Body(None), user
     b = _load(db, booking_id, user)
     if b.status != "requested":
         raise invalid_transition(f"Không thể xác nhận lịch đang ở trạng thái {b.status}")
+    if b.slot_start <= datetime.now(timezone.utc):
+        raise invalid_transition("Giờ hẹn đã qua; hãy từ chối và hẹn lại với sinh viên")
     return _transition(db, b, user, "confirmed", body.note if body else None)
 
 

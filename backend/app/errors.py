@@ -32,6 +32,8 @@ def _body(code: str, message: str, details: dict | None = None) -> dict:
     return {"error": {"code": code, "message": message, "details": details or {}}}
 
 
+_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
 _HTTP_CODES = {401: "UNAUTHORIZED", 403: "FORBIDDEN", 404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 429: "RATE_LIMITED"}
 
 
@@ -50,23 +52,28 @@ def install_error_handlers(app: FastAPI) -> None:
             content=_body("VALIDATION_ERROR", "Dữ liệu không hợp lệ", {"fields": fields}),
         )
 
-    @app.exception_handler(DataError)
-    async def _db_data(request: Request, exc: DataError):
-        # Giá trị vượt kiểu cột (tràn số, sai định dạng) lọt qua kiểm tra đầu vào: trả 422 thay vì 500.
+    def _db_error(request: Request, exc: Exception, message: str) -> JSONResponse:
         import logging
 
-        logging.getLogger("phongtro.api").warning("DataError ở %s %s: %s", request.method, request.url.path,
-                                                   type(exc.orig).__name__ if exc.orig else "?")
-        return JSONResponse(status_code=422, content=_body("VALIDATION_ERROR", "Giá trị vượt giới hạn cho phép"))
+        log = logging.getLogger("phongtro.api")
+        orig = getattr(exc, "orig", None)
+        if request.method in _WRITE_METHODS:
+            # Ghi dữ liệu vượt kiểu cột / vi phạm ràng buộc mà kiểm tra đầu vào bỏ sót: lỗi của yêu cầu -> 422.
+            log.warning("%s ở %s %s: %s", type(exc).__name__, request.method, request.url.path,
+                        type(orig).__name__ if orig else "?")
+            return JSONResponse(status_code=422, content=_body("VALIDATION_ERROR", message))
+        # Lệnh đọc mà gặp lỗi dữ liệu là lỗi PHÍA MÁY CHỦ (dữ liệu cũ hỏng, hàm SQL sai): trả 500 để giám sát
+        # bắt được, không đổ lỗi cho người dùng (báo cáo QA 19/11, mục 8).
+        log.error("%s ở %s %s", type(exc).__name__, request.method, request.url.path, exc_info=exc)
+        return JSONResponse(status_code=500, content=_body("INTERNAL_ERROR", "Lỗi máy chủ, vui lòng thử lại sau"))
+
+    @app.exception_handler(DataError)
+    async def _db_data(request: Request, exc: DataError):
+        return _db_error(request, exc, "Giá trị vượt giới hạn cho phép")
 
     @app.exception_handler(IntegrityError)
     async def _db_integrity(request: Request, exc: IntegrityError):
-        # Vi phạm ràng buộc CSDL chưa được xử lý riêng ở router (CHECK, khóa ngoại...).
-        import logging
-
-        logging.getLogger("phongtro.api").warning("IntegrityError ở %s %s: %s", request.method, request.url.path,
-                                                   type(exc.orig).__name__ if exc.orig else "?")
-        return JSONResponse(status_code=422, content=_body("VALIDATION_ERROR", "Dữ liệu không thỏa ràng buộc của hệ thống"))
+        return _db_error(request, exc, "Dữ liệu không thỏa ràng buộc của hệ thống")
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception):

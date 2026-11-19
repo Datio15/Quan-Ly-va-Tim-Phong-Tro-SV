@@ -30,6 +30,8 @@ def generate_for_landlord(db: Session, landlord_id: uuid.UUID, period: date) -> 
             House.landlord_id == landlord_id,
             Tenant.is_active.is_(True),
             Tenant.start_date <= month_end(period),
+            # BE-04: hợp đồng đã kết thúc trước tháng này thì không tính tiền (kể cả khi chưa bấm "Kết thúc thuê").
+            (Tenant.end_date.is_(None)) | (Tenant.end_date >= period),
         )
         .order_by(Tenant.created_at)
     ).unique().all()
@@ -42,7 +44,8 @@ def generate_for_landlord(db: Session, landlord_id: uuid.UUID, period: date) -> 
 
     created, skipped, existing = [], [], []
     for t in tenants:
-        if db.scalar(select(Invoice.id).where(Invoice.tenant_id == t.id, Invoice.period == period)):
+        if db.scalar(select(Invoice.id).where(Invoice.tenant_id == t.id, Invoice.period == period,
+                                               Invoice.status != "void")):
             existing.append(str(t.id))
             continue
         cur = db.scalars(select(MeterReading).where(MeterReading.room_id == t.room_id, MeterReading.period == period)).first()

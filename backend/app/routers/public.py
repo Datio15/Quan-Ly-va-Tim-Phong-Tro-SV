@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db import get_db
 from ..errors import not_found
-from ..models import Amenity, RoomImage, School
+from ..models import Amenity, Room, RoomImage, School
 from ..security import decode_signed_token
 from ..services import storage
 
@@ -44,17 +44,29 @@ def amenities(db: Session = Depends(get_db)):
 
 
 @router.get("/images/{image_id}", include_in_schema=False)
-def image(image_id: uuid.UUID, db: Session = Depends(get_db)):
+def image(image_id: uuid.UUID, t: str | None = Query(None, max_length=2000), db: Session = Depends(get_db)):
     """Đề xuất bổ sung SPEC: ảnh phòng (bucket public-src) khi chưa có bản trên Blob.
-    MinIO chỉ mở cho sg-app nên trình duyệt không truy cập thẳng được."""
+    MinIO chỉ mở cho sg-app nên trình duyệt không truy cập thẳng được.
+
+    Không có token: chỉ ảnh đã duyệt của phòng đang công khai. Có token ký (trang chủ trọ/quản trị):
+    mọi ảnh của phòng đó, kể cả chờ duyệt (BE-10)."""
     img = db.get(RoomImage, image_id)
-    if img is None or img.moderation == "rejected":
+    if img is None:
         raise not_found("Không tìm thấy ảnh")
+    if t is not None:
+        if decode_signed_token(t, "image").get("img") != str(image_id):
+            raise not_found("Không tìm thấy ảnh")
+        cache = "private, max-age=300"
+    else:
+        room = db.get(Room, img.room_id)
+        if img.moderation != "ok" or room is None or room.status != "published":
+            raise not_found("Không tìm thấy ảnh")
+        cache = "public, max-age=300"
     try:
         data, ctype = storage.get(settings.minio_bucket_public_src, img.object_key)
     except Exception:
         raise not_found("Không tìm thấy ảnh")
-    return Response(content=data, media_type=ctype, headers={"Cache-Control": "public, max-age=300"})
+    return Response(content=data, media_type=ctype, headers={"Cache-Control": cache})
 
 
 @router.get("/files/signed", include_in_schema=False)

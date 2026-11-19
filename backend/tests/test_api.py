@@ -5,6 +5,7 @@ Chạy trong container api:
 Biến môi trường: API_BASE (mặc định http://localhost:8000/api/v1), SEED_DEMO_PASSWORD, DB_* (đọc outbox).
 Mỗi lần chạy tạo tài khoản/nhà/phòng mới nên chạy lại được nhiều lần.
 """
+import io
 import os
 import random
 import uuid
@@ -39,10 +40,27 @@ def login(http, email, password=None):
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
+def fake_ip() -> dict:
+    return {"X-Forwarded-For": f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"}
+
+
+def png_bytes(size=(8, 8), tail: bytes = b"") -> bytes:
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", size, (200, 120, 40)).save(buf, format="PNG")
+    return buf.getvalue() + tail
+
+
+def upload_image(http, headers, room_id, data: bytes | None = None):
+    return http.post(f"/landlord/rooms/{room_id}/images", headers=headers,
+                     files={"file": ("a.png", data or png_bytes(), "image/png")})
+
+
 def new_student(http):
     email = f"sv-{uuid.uuid4().hex[:10]}@example.com"
     r = http.post("/auth/register", json={"email": email, "password": "matkhau123", "full_name": "Sinh Viên Thử",
-                                         "phone": "0000000999", "role": "student"})
+                                         "phone": "0000000999", "role": "student"}, headers=fake_ip())
     assert r.status_code == 201, r.text
     return login(http, email, "matkhau123")
 
@@ -91,6 +109,7 @@ def published_room(http, landlord1, admin, db):
     assert room["status"] == "draft" and room["version"] == 1
     v0, ob0 = room["version"], outbox_count(db, room["id"])
 
+    assert upload_image(http, landlord1, room["id"]).status_code == 201  # BE-09: gửi duyệt cần ít nhất 1 ảnh
     r = http.post(f"/landlord/rooms/{room['id']}/submit", headers=landlord1)
     assert r.status_code == 200 and r.json()["status"] == "pending"
     r = http.post(f"/admin/rooms/{room['id']}/approve", headers=admin, json={})
@@ -107,10 +126,10 @@ def published_room(http, landlord1, admin, db):
 def test_tc01_register_login_me(http):
     email = f"tc01-{uuid.uuid4().hex[:8]}@example.com"
     r = http.post("/auth/register", json={"email": email, "password": "matkhau123", "full_name": "Nguyễn Văn A",
-                                         "phone": "0000000999", "role": "student"})
+                                         "phone": "0000000999", "role": "student"}, headers=fake_ip())
     assert r.status_code == 201 and r.json()["role"] == "student"
     assert http.post("/auth/register", json={"email": email.upper(), "password": "matkhau123", "full_name": "B B",
-                                            "role": "student"}).json()["error"]["code"] == "EMAIL_TAKEN"
+                                            "role": "student"}, headers=fake_ip()).json()["error"]["code"] == "EMAIL_TAKEN"
     h = login(http, email, "matkhau123")
     r = http.get("/me", headers=h)
     assert r.status_code == 200 and r.json()["role"] == "student" and r.json()["email"] == email
@@ -198,7 +217,7 @@ def _slot(days=3) -> str:
     """Giờ hẹn ngẫu nhiên không trùng trong một lần chạy (phòng thử nghiệm được tạo mới mỗi lần)."""
     base = (datetime.now(VN) + timedelta(days=days)).replace(hour=7, minute=0, second=0, microsecond=0)
     while True:
-        slot = base + timedelta(minutes=5 * random.randint(0, 160))
+        slot = base + timedelta(minutes=15 * random.randint(0, 55))  # mốc 15 phút, 07:00-20:45 (BE-08)
         if slot not in _used_slots:
             _used_slots.add(slot)
             return slot.isoformat()
@@ -276,12 +295,12 @@ def test_tc11_review_then_hide(http, published_room, admin, db):
 
 def test_tc12_invoice_twice(http, landlord1, published_room):
     room_id = published_room["id"]
+    # Năm ngẫu nhiên trong quá khứ (phòng tạo mới mỗi lần nên không đụng lần chạy trước; BE-05 cấm kỳ ở tương lai xa)
+    year = random.randint(2001, 2024)
     r = http.post("/landlord/tenants", headers=landlord1, json={
-        "room_id": room_id, "full_name": "Khách Thuê Giả", "phone": "0000000777", "start_date": "2026-09-01",
-        "end_date": "2027-08-31", "deposit_amount": 3000000, "people_count": 2, "vehicle_count": 1})
+        "room_id": room_id, "full_name": "Khách Thuê Giả", "phone": "0000000777", "start_date": f"{year}-09-01",
+        "end_date": f"{year + 1}-08-31", "deposit_amount": 3000000, "people_count": 2, "vehicle_count": 1})
     assert r.status_code == 201, r.text
-    # Tháng ngẫu nhiên trong tương lai xa để không đụng hóa đơn của các lần chạy trước
-    year = random.randint(2030, 2090)
     for month, e, w in ((f"{year}-10", 1000.0, 50.0), (f"{year}-11", 1120.5, 55.0)):
         r = http.post("/landlord/meter-readings", headers=landlord1,
                       json={"room_id": room_id, "month": month, "electricity_index": e, "water_index": w})
@@ -322,14 +341,12 @@ def test_admin_status_and_jobs(http, admin):
 
 
 def test_image_upload_and_validation(http, landlord1, published_room):
-    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-    r = http.post(f"/landlord/rooms/{published_room['id']}/images", headers=landlord1,
-                  files={"file": ("a.png", png, "image/png")})
+    r = upload_image(http, landlord1, published_room["id"])
     assert r.status_code == 201, r.text
     assert r.json()["moderation"] == "pending"
-    r = http.post(f"/landlord/rooms/{published_room['id']}/images", headers=landlord1,
-                  files={"file": ("a.png", b"not an image", "image/png")})
-    assert r.status_code == 422
+    # BE-10: chữ ký đầu file đúng nhưng nội dung không phải ảnh hợp lệ
+    for bad in (b"not an image", b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, b"\xff\xd8\xff" + b"garbage" * 10):
+        assert upload_image(http, landlord1, published_room["id"], bad).status_code == 422
 
 
 # ---------- Báo cáo QA 18/11: BE-01, BE-02 ----------
@@ -378,6 +395,7 @@ def test_be01_max_cost_rates_do_not_break_search(http, landlord1, admin, publish
                   json=_room_body(published_room["house"]["id"], price_month=100_000_000, cost_rates=rates))
     assert r.status_code == 201, r.text
     rid = r.json()["id"]
+    assert upload_image(http, landlord1, rid).status_code == 201
     assert http.post(f"/landlord/rooms/{rid}/submit", headers=landlord1).status_code == 200
     assert http.post(f"/admin/rooms/{rid}/approve", headers=admin, json={}).status_code == 200
     try:
@@ -389,3 +407,167 @@ def test_be01_max_cost_rates_do_not_break_search(http, landlord1, admin, publish
         assert http.post("/rooms/compare", json={"ids": [rid, published_room["id"]]}).status_code == 200
     finally:
         http.post(f"/landlord/rooms/{rid}/hide", headers=landlord1)
+
+
+# ---------- Báo cáo QA 18/11: các lỗi còn lại (nhánh fix/qa-bao-cao-18-11) ----------
+def _new_room(http, landlord, house_id, publish_with=None, **over) -> str:
+    r = http.post("/landlord/rooms", headers=landlord, json=_room_body(house_id, **over))
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+    if publish_with is not None:
+        assert upload_image(http, landlord, rid).status_code == 201
+        assert http.post(f"/landlord/rooms/{rid}/submit", headers=landlord).status_code == 200
+        assert http.post(f"/admin/rooms/{rid}/approve", headers=publish_with, json={}).status_code == 200
+    return rid
+
+
+def test_be03_one_active_tenant_per_room(http, landlord1, published_room):
+    rid = _new_room(http, landlord1, published_room["house"]["id"], max_people=2)
+    base = {"room_id": rid, "full_name": "Khách Một", "start_date": "2026-09-01"}
+    r = http.post("/landlord/tenants", headers=landlord1, json={**base, "people_count": 3})
+    assert r.status_code == 422, r.text  # vượt sức chứa
+    t1 = http.post("/landlord/tenants", headers=landlord1, json=base)
+    assert t1.status_code == 201, t1.text
+    r = http.post("/landlord/tenants", headers=landlord1, json={**base, "full_name": "Khách Hai"})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "TENANT_EXISTS"
+    assert http.post("/landlord/tenants", headers=landlord1, json={**base, "email": "khong-hop-le"}).status_code == 422
+    # Kết thúc hợp đồng cũ thì thêm được khách mới; bật lại hợp đồng cũ thì bị chặn
+    assert http.patch(f"/landlord/tenants/{t1.json()['id']}", headers=landlord1, json={"is_active": False}).status_code == 200
+    t2 = http.post("/landlord/tenants", headers=landlord1, json={**base, "full_name": "Khách Hai"})
+    assert t2.status_code == 201, t2.text
+    r = http.patch(f"/landlord/tenants/{t1.json()['id']}", headers=landlord1, json={"is_active": True})
+    assert r.status_code == 409
+
+
+def test_be04_be05_invoice_void_and_meter_rules(http, landlord1, published_room):
+    rid = _new_room(http, landlord1, published_room["house"]["id"])
+    year = random.randint(2001, 2024)
+    t = http.post("/landlord/tenants", headers=landlord1, json={
+        "room_id": rid, "full_name": "Khách Hủy", "start_date": f"{year}-01-01", "end_date": f"{year}-06-30"})
+    assert t.status_code == 201, t.text
+
+    def reading(month, e, w):
+        return http.post("/landlord/meter-readings", headers=landlord1,
+                         json={"room_id": rid, "month": month, "electricity_index": e, "water_index": w})
+
+    assert reading(f"{year}-03", 100, 10).status_code == 201
+    assert reading(f"{year}-04", 150, 12).status_code == 201
+    assert reading(f"{year}-05", 90, 12).status_code == 422          # nhỏ hơn kỳ trước
+    assert reading(f"{year}-02", 120, 5).status_code == 422          # lớn hơn kỳ sau
+    assert reading("2099-01", 1, 1).status_code == 422               # tương lai xa
+    r = http.post("/landlord/invoices/generate", headers=landlord1, json={"month": f"{year}-03"})
+    inv = [i for i in r.json()["created"] if i["room_id"] == rid][0]
+    v = http.post(f"/landlord/invoices/{inv['id']}/void", headers=landlord1)
+    assert v.status_code == 200 and v.json()["status"] == "void"
+    assert http.post(f"/landlord/invoices/{inv['id']}/void", headers=landlord1).status_code == 409
+    r = http.post("/landlord/invoices/generate", headers=landlord1, json={"month": f"{year}-03"})
+    assert r.status_code == 201 and [i for i in r.json()["created"] if i["room_id"] == rid], r.text  # tạo lại được
+    # Hợp đồng kết thúc 30/6: tháng 8 không còn hóa đơn
+    assert reading(f"{year}-08", 300, 20).status_code == 201
+    assert reading(f"{year}-09", 350, 22).status_code == 201
+    r = http.post("/landlord/invoices/generate", headers=landlord1, json={"month": f"{year}-08"})
+    assert not [i for i in r.json().get("created", []) if i["room_id"] == rid]
+
+
+def test_be06_successful_logins_not_limited(http):
+    ip = fake_ip()
+    codes = [http.post("/auth/login", json={"email": "sinhvien1@example.com", "password": PW}, headers=ip).status_code
+             for _ in range(12)]
+    assert codes == [200] * 12
+
+
+def test_be07_register_validation(http):
+    base = {"password": "matkhau123", "full_name": "Người Thử", "role": "student"}
+    sfx = uuid.uuid4().hex[:8]
+    for email in ("a@b.c", "x@y..z", f"qa..{sfx}@example.com", f".qa{sfx}@example.com"):
+        assert http.post("/auth/register", json={**base, "email": email}, headers=fake_ip()).status_code == 422, email
+    weak = http.post("/auth/register", json={**base, "email": f"w{sfx}@example.com", "password": "aaaaaaaa"}, headers=fake_ip())
+    assert weak.status_code == 422
+    html = http.post("/auth/register", json={**base, "email": f"h{sfx}@example.com", "full_name": "<script>x</script>"},
+                     headers=fake_ip())
+    assert html.status_code == 422
+    # Mật khẩu có khoảng trắng hai đầu được giữ nguyên
+    email = f"sp{sfx}@example.com"
+    r = http.post("/auth/register", json={**base, "email": email, "password": "  matkhau123 "}, headers=fake_ip())
+    assert r.status_code == 201, r.text
+    assert http.post("/auth/login", json={"email": email, "password": "  matkhau123 "}, headers=fake_ip()).status_code == 200
+    assert http.post("/auth/login", json={"email": email, "password": "matkhau123"}, headers=fake_ip()).status_code == 401
+
+
+def test_be08_booking_slot_rules(http, published_room):
+    s = new_student(http)
+    day = (datetime.now(VN) + timedelta(days=9)).replace(second=0, microsecond=0)
+    room = published_room["id"]
+    for bad in (day.replace(hour=10, minute=7), day.replace(hour=3, minute=0), day.replace(hour=21, minute=15),
+                day.replace(hour=10, minute=0, second=13)):
+        r = http.post("/bookings", headers=s, json={"room_id": room, "slot_start": bad.isoformat()})
+        assert r.status_code == 422, (bad, r.text)
+    ok = http.post("/bookings", headers=s, json={"room_id": room, "slot_start": day.replace(hour=10, minute=0).isoformat(),
+                                                 "student_note": "Đi cùng bạn"})
+    assert ok.status_code == 201, ok.text
+    other = next(i["id"] for i in http.get("/search/rooms", params={"page_size": 5}).json()["items"] if i["id"] != room)
+    r = http.post("/bookings", headers=s, json={"room_id": other, "slot_start": day.replace(hour=10, minute=30).isoformat()})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "BOOKING_CONFLICT"
+    c = http.post(f"/bookings/{ok.json()['id']}/cancel", headers=s, json={"note": "bận đột xuất"})
+    assert c.status_code == 200 and "bận đột xuất" in c.json()["student_note"] and "Đi cùng bạn" in c.json()["student_note"]
+
+
+def test_be09_publish_requires_image(http, landlord1, admin, published_room):
+    rid = _new_room(http, landlord1, published_room["house"]["id"])
+    r = http.post(f"/landlord/rooms/{rid}/submit", headers=landlord1)
+    assert r.status_code == 422, r.text
+    assert upload_image(http, landlord1, rid).status_code == 201
+    assert http.post(f"/landlord/rooms/{rid}/submit", headers=landlord1).status_code == 200
+    r = http.post(f"/admin/rooms/{rid}/approve", headers=admin, json={"image_ids_ok": []})
+    assert r.status_code == 422, r.text  # loại hết ảnh thì không được công khai
+    assert http.post(f"/admin/rooms/{rid}/approve", headers=admin, json={}).json()["status"] == "published"
+    v = http.get(f"/landlord/rooms/{rid}", headers=landlord1).json()["version"]
+    # Duyệt ảnh khi không có ảnh chờ: không tăng version
+    assert http.post(f"/admin/rooms/{rid}/approve", headers=admin, json={}).json()["version"] == v
+    http.post(f"/landlord/rooms/{rid}/hide", headers=landlord1)
+
+
+def test_be10_image_access_and_reencode(http, landlord1, published_room):
+    up = upload_image(http, landlord1, published_room["id"], png_bytes(tail=b"<script>alert(1)</script>"))
+    assert up.status_code == 201, up.text
+    img = up.json()
+    # Ảnh chờ duyệt: ẩn danh không xem được; URL ký (trang chủ trọ) thì được, và ảnh đã được mã hóa lại sạch
+    assert http.get(f"/images/{img['id']}").status_code == 404
+    signed = http.get(img["url"].removeprefix("/api/v1"))
+    assert signed.status_code == 200 and b"<script>" not in signed.content
+    assert signed.headers.get("x-content-type-options") == "nosniff"
+    assert http.get(f"/images/{img['id']}", params={"t": "sai"}).status_code == 401
+
+
+def test_be12_search_unaccent_and_facets(http, published_room):
+    r = http.get("/search/rooms", params={"q": "xuan thuy"})  # phòng thử nghiệm ở đường Xuân Thủy
+    assert r.status_code == 200 and r.json()["total"] >= 1
+    assert http.get("/search/rooms", params={"q": "Xuân   Thủy cầu giấy"}).json()["total"] >= 1
+    assert http.get("/search/rooms", params={"price_min": 5_000_000, "price_max": 1_000_000}).status_code == 422
+    facets = http.get("/search/rooms").json()["facets"]
+    assert facets["area"] and facets["amenities"] and {"value", "count"} <= set(facets["area"][0])
+
+
+def test_be13_be14_report_dedupe_and_timezone(http, published_room, admin):
+    s = new_student(http)
+    body = {"target_type": "room", "target_id": published_room["id"], "reason": "Thông tin sai"}
+    r1 = http.post("/reports", headers=s, json=body)
+    r2 = http.post("/reports", headers=s, json=body)
+    assert r1.status_code == 201 and r2.status_code == 200 and r1.json()["id"] == r2.json()["id"]
+    res = http.post(f"/admin/reports/{r1.json()['id']}/resolve", headers=admin, json={"action": "dismiss"})
+    assert res.status_code == 200 and res.json()["resolved_at"].endswith("+07:00")
+
+
+def test_be15_house_coordinates(http, landlord1, published_room):
+    house = {"name": "Nhà nửa tọa độ", "address_private": "1", "street": "A", "ward": "B", "area": "C"}
+    assert http.post("/landlord/houses", headers=landlord1, json={**house, "lat": 21.0}).status_code == 422
+    r = http.patch(f"/landlord/houses/{published_room['house']['id']}", headers=landlord1, json={"lat": None, "lng": None})
+    assert r.status_code == 422  # nhà đang có phòng hiển thị
+
+
+def test_compare_reports_missing_rooms(http, published_room):
+    ids = [i["id"] for i in http.get("/search/rooms", params={"page_size": 2}).json()["items"]]
+    r = http.post("/rooms/compare", json={"ids": ids + [str(uuid.uuid4())]})
+    assert r.status_code == 200 and len(r.json()["missing"]) == 1
+    r = http.post("/rooms/compare", json={"ids": [ids[0], str(uuid.uuid4())]})
+    assert r.status_code == 404 and len(r.json()["error"]["details"]["missing"]) == 1
