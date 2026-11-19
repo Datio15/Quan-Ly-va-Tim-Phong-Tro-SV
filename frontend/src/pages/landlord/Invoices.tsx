@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, errorMessage } from "../../api/client";
+import { api, apiAll, errorMessage } from "../../api/client";
 import type { Invoice, LandlordRoom, MeterReading, Paged } from "../../api/types";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, Notice, PageTitle, Pagination, STATUS_TONE, Select } from "../../components/ui";
 import { INVOICE_STATUS_LABEL, currentMonth, date, vnd } from "../../lib/format";
@@ -31,6 +31,12 @@ export default function InvoicesPage() {
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
   });
+  // BE-04: hủy hóa đơn nhập sai để tạo lại.
+  const voidInv = useMutation({
+    mutationFn: (id: string) => api(`/landlord/invoices/${id}/void`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
+    onError: (e) => alert(errorMessage(e)),
+  });
   const paid = useMutation({
     mutationFn: (id: string) => api(`/landlord/invoices/${id}/paid`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
@@ -49,7 +55,7 @@ export default function InvoicesPage() {
             Hóa đơn tháng M dùng chỉ số ngày 1/M và 1/(M+1). Hạn thanh toán ngày 10 tháng sau. Mỗi khách một hóa đơn mỗi tháng.
           </p>
           <div className="flex gap-2">
-            <Input type="month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="!w-auto" />
+            <Input type="month" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="YYYY-MM" title="Tháng dạng YYYY-MM, vd 2026-10" value={genMonth} onChange={(e) => setGenMonth(e.target.value)} className="!w-auto" />
             <Button loading={gen.isPending} onClick={() => gen.mutate()}>Tạo hóa đơn</Button>
           </div>
           <ErrorBox error={gen.error} />
@@ -65,7 +71,7 @@ export default function InvoicesPage() {
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="mr-auto font-semibold">Danh sách hóa đơn</h2>
-          <Input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setPage(1); }} className="!w-auto" />
+          <Input type="month" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="YYYY-MM" title="Tháng dạng YYYY-MM, vd 2026-10" value={month} onChange={(e) => { setMonth(e.target.value); setPage(1); }} className="!w-auto" />
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="!w-auto">
             <option value="">Mọi trạng thái</option>
             {Object.entries(INVOICE_STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -98,7 +104,11 @@ export default function InvoicesPage() {
                     <td className="p-2"><Badge tone={STATUS_TONE[i.status]}>{INVOICE_STATUS_LABEL[i.status]}</Badge></td>
                     <td className="p-2">
                       {(i.status === "unpaid" || i.status === "overdue") && (
-                        <Button variant="secondary" className="!px-2 !py-1 text-xs" onClick={() => paid.mutate(i.id)}>Đã trả</Button>
+                        <div className="flex gap-1">
+                          <Button variant="secondary" className="!px-2 !py-1 text-xs" onClick={() => paid.mutate(i.id)}>Đã trả</Button>
+                          <Button variant="ghost" className="!px-2 !py-1 text-xs text-rose-600"
+                            onClick={() => confirm(`Hủy hóa đơn ${i.code}? Sau khi hủy có thể tạo lại hóa đơn tháng này.`) && voidInv.mutate(i.id)}>Hủy</Button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -115,7 +125,7 @@ export default function InvoicesPage() {
 
 function MeterReadingCard() {
   const qc = useQueryClient();
-  const rooms = useQuery({ queryKey: ["landlord-rooms", "all"], queryFn: () => api<Paged<LandlordRoom>>("/landlord/rooms", { query: { page_size: 50 } }) });
+  const rooms = useQuery({ queryKey: ["landlord-rooms", "all"], queryFn: () => apiAll<LandlordRoom>("/landlord/rooms") });
   const [roomId, setRoomId] = useState("");
   const [month, setMonth] = useState(currentMonth());
   const [e, setE] = useState("");
@@ -141,11 +151,11 @@ function MeterReadingCard() {
         <Field label="Phòng">
           <Select required value={roomId} onChange={(ev) => setRoomId(ev.target.value)}>
             <option value="">— Chọn phòng —</option>
-            {rooms.data?.items.map((r) => <option key={r.id} value={r.id}>{r.house_name} · {r.title}</option>)}
+            {rooms.data?.map((r) => <option key={r.id} value={r.id}>{r.house_name} · {r.title}</option>)}
           </Select>
         </Field>
         <div className="grid grid-cols-3 gap-2">
-          <Field label="Kỳ (tháng)"><Input type="month" required value={month} onChange={(ev) => setMonth(ev.target.value)} /></Field>
+          <Field label="Kỳ (tháng)"><Input type="month" required pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="YYYY-MM" title="Tháng dạng YYYY-MM, vd 2026-10" value={month} onChange={(ev) => setMonth(ev.target.value)} /></Field>
           <Field label="Chỉ số điện"><Input type="number" required min={0} step={0.1} value={e} onChange={(ev) => setE(ev.target.value)} /></Field>
           <Field label="Chỉ số nước"><Input type="number" required min={0} step={0.1} value={w} onChange={(ev) => setW(ev.target.value)} /></Field>
         </div>

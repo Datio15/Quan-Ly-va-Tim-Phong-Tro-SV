@@ -85,7 +85,8 @@ function HouseModal({ house, onClose }: { house: House | null; onClose: () => vo
         </div>
         <Field label="Vị trí trên bản đồ">
           <MapPicker lat={f.lat} lng={f.lng} address={[f.address_private, f.street, f.ward, f.city].filter(Boolean).join(", ")}
-            onChange={(lat, lng) => setF((p) => ({ ...p, lat, lng }))} />
+            onChange={(lat, lng) => setF((p) => ({ ...p, lat, lng }))}
+            onClear={() => setF((p) => ({ ...p, lat: null, lng: null }))} />
         </Field>
         <ErrorBox error={m.error} />
         <Button type="submit" className="w-full" loading={m.isPending}>Lưu</Button>

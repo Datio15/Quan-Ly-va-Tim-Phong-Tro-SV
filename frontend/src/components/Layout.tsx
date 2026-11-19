@@ -90,6 +90,10 @@ export default function Layout() {
                 {i.label}
               </NavLink>
             ))}
+            {!user && (
+              // FE-15: trên màn hình nhỏ nút "Đăng ký" ở header bị ẩn, nên đưa vào menu.
+              <NavLink to="/register" className={({ isActive }) => cx(linkCls({ isActive }), "block")}>Đăng ký</NavLink>
+            )}
             {user && (
               <>
                 <NavLink to="/profile" className={({ isActive }) => cx(linkCls({ isActive }), "block")}>Hồ sơ</NavLink>

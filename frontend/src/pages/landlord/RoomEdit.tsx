@@ -59,6 +59,8 @@ export default function RoomEditPage() {
     enabled: !isNew,
   });
   const [f, setF] = useState<RoomForm | null>(null);
+  // FE-03: có thay đổi chưa lưu thì không ghi đè form bằng dữ liệu máy chủ (sau khi tải ảnh, ẩn/hiện tin...).
+  const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -70,8 +72,14 @@ export default function RoomEditPage() {
     }
   }, [isNew, houses.data, f]);
   useEffect(() => {
-    if (room.data) setF(toForm(room.data));
-  }, [room.data]);
+    if (room.data && !dirty) setF(toForm(room.data));
+  }, [room.data, dirty]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -81,6 +89,8 @@ export default function RoomEditPage() {
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["landlord-rooms"] });
       qc.setQueryData(["landlord-room", r.id], r);
+      setF(toForm(r));
+      setDirty(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       if (isNew) navigate(`/landlord/rooms/${r.id}`, { replace: true });
@@ -103,8 +113,11 @@ export default function RoomEditPage() {
   if (!f) return <Loading />;
 
   const r = room.data;
-  const set = <K extends keyof RoomForm>(k: K, v: RoomForm[K]) => setF({ ...f, [k]: v });
-  const setRate = <K extends keyof CostRates>(k: K, v: CostRates[K]) => setF({ ...f, cost_rates: { ...f.cost_rates, [k]: v } });
+  const set = <K extends keyof RoomForm>(k: K, v: RoomForm[K]) => { setF({ ...f, [k]: v }); setDirty(true); };
+  const setRate = <K extends keyof CostRates>(k: K, v: CostRates[K]) => {
+    setF({ ...f, cost_rates: { ...f.cost_rates, [k]: v } });
+    setDirty(true);
+  };
   const toggleAmenity = (c: string) => set("amenities", f.amenities.includes(c) ? f.amenities.filter((x) => x !== c) : [...f.amenities, c]);
 
   return (
@@ -113,7 +126,10 @@ export default function RoomEditPage() {
       <PageTitle
         actions={r && (
           <>
-            {(r.status === "draft" || r.status === "rejected") && <Button loading={transition.isPending} onClick={() => transition.mutate("submit")}>Gửi duyệt</Button>}
+            {(r.status === "draft" || r.status === "rejected") && (
+              <Button loading={transition.isPending} disabled={dirty} title={dirty ? "Hãy lưu thay đổi trước khi gửi duyệt" : undefined}
+                onClick={() => transition.mutate("submit")}>Gửi duyệt</Button>
+            )}
             {r.status === "published" && <Button variant="secondary" loading={transition.isPending} onClick={() => transition.mutate("hide")}>Ẩn tin</Button>}
             {r.status === "hidden" && <Button variant="secondary" loading={transition.isPending} onClick={() => transition.mutate("unhide")}>Hiện lại</Button>}
             {r.status === "published" && <Link to={`/rooms/${r.id}`}><Button variant="ghost">Xem trang công khai ↗</Button></Link>}
@@ -125,7 +141,8 @@ export default function RoomEditPage() {
 
       {r?.status === "rejected" && r.reject_reason && <Notice tone="warn">Bị từ chối: {r.reject_reason}. Sửa lại rồi gửi duyệt lại.</Notice>}
       {r?.status === "pending" && <Notice>Tin đang chờ quản trị viên duyệt.</Notice>}
-      {r?.status === "published" && <Notice tone="success">Tin đang hiển thị. Mọi thay đổi được đồng bộ sang Azure AI Search trong vài giây (phiên bản v{r.version}).</Notice>}
+      {r?.status === "published" && <Notice tone="success">Tin đang hiển thị (phiên bản v{r.version}). Thay đổi được xếp hàng đồng bộ sang Azure AI Search; trang trạng thái hệ thống cho biết lần gửi gần nhất.</Notice>}
+      {dirty && <Notice tone="warn">Có thay đổi chưa lưu.</Notice>}
 
       <form className="grid gap-5 lg:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <Card className="space-y-3">

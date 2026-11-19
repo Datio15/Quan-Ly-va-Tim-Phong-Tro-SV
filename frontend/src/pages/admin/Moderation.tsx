@@ -93,7 +93,10 @@ function ModerationCard({ room }: { room: LandlordRoomFull }) {
         <div className="flex gap-2">
           {(room.status === "pending" || room.status === "published") && (
             <>
-              <Button loading={approve.isPending} onClick={() => approve.mutate()}>{room.status === "pending" ? "Duyệt" : "Duyệt ảnh"}</Button>
+              {/* FE-15: phòng đang hiển thị chỉ cần "Duyệt ảnh" khi có ảnh chờ duyệt. */}
+              {(room.status === "pending" || pendingImgs.length > 0) && (
+                <Button loading={approve.isPending} onClick={() => approve.mutate()}>{room.status === "pending" ? "Duyệt" : "Duyệt ảnh"}</Button>
+              )}
               <Button variant="danger" onClick={() => setRejectOpen(true)}>{room.status === "pending" ? "Từ chối" : "Gỡ tin"}</Button>
             </>
           )}

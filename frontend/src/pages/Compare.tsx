@@ -1,10 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { RoomCardData } from "../api/types";
 import { RoomThumb } from "../components/RoomCard";
-import { Empty, ErrorBox, Loading, PageTitle, Select, cx } from "../components/ui";
+import { Empty, ErrorBox, Loading, Notice, PageTitle, Select, cx } from "../components/ui";
 import { useAmenities, useSchools } from "../lib/catalog";
 import { useCompare } from "../lib/compare";
 import { distance, vnd } from "../lib/format";
@@ -17,6 +17,7 @@ type CompareRoom = Pick<RoomCardData, "id" | "title" | "price_month" | "est_mont
 
 interface CompareResult {
   rooms: CompareRoom[];
+  missing?: string[];
   best: Record<string, string | null>;
 }
 
@@ -27,6 +28,7 @@ export default function ComparePage() {
   const { data: amenities } = useAmenities();
   const [schoolId, setSchoolId] = useState("");
   const ids = compare.items.map((i) => i.id);
+  const [removedNote, setRemovedNote] = useState<string[]>([]);
 
   const q = useQuery({
     queryKey: ["compare", ids, schoolId],
@@ -34,10 +36,23 @@ export default function ComparePage() {
     enabled: ids.length >= 2,
   });
 
+  // FE-13: phòng không còn công khai (lưu trong trình duyệt từ trước) thì tự bỏ khỏi danh sách và báo rõ.
+  const { remove } = compare;
+  useEffect(() => {
+    const fromError = q.error instanceof ApiError ? (q.error.details?.missing as string[] | undefined) : undefined;
+    const missing = q.data?.missing?.length ? q.data.missing : fromError;
+    if (missing?.length) {
+      setRemovedNote(compare.items.filter((i) => missing.includes(i.id)).map((i) => i.title));
+      remove(missing);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q.data, q.error, remove]);
+
   if (ids.length < 2) {
     return (
       <div>
         <PageTitle>So sánh phòng</PageTitle>
+        {removedNote.length > 0 && <div className="mb-3"><Notice tone="warn">Đã bỏ khỏi so sánh vì không còn hiển thị: {removedNote.join(", ")}.</Notice></div>}
         <Empty>Chọn ít nhất 2 phòng (ô “So sánh” trên mỗi phòng) để so sánh. <Link to="/" className="text-brand-700 underline">Tìm phòng</Link></Empty>
       </div>
     );
@@ -45,6 +60,13 @@ export default function ComparePage() {
 
   const rooms = q.data?.rooms || [];
   const best = q.data?.best || {};
+  // Hai phòng bằng nhau ở tiêu chí tốt nhất thì cùng được đánh dấu (API chỉ trả một id).
+  const isBest = (key: string, r: CompareRoom) => {
+    const winner = rooms.find((x) => x.id === best[key]);
+    if (!winner) return false;
+    const field = key as keyof CompareRoom;
+    return winner.id === r.id || (winner[field] !== null && winner[field] === r[field]);
+  };
   const rows: { key: string; label: string; render: (r: CompareRoom) => ReactNode }[] = [
     { key: "price_month", label: "Giá phòng", render: (r) => vnd(r.price_month) },
     { key: "est_monthly_cost", label: "Chi phí ước tính/tháng", render: (r) => vnd(r.est_monthly_cost) },
@@ -66,6 +88,7 @@ export default function ComparePage() {
           {schools?.map((s) => <option key={s.id} value={s.id}>{s.short_name}</option>)}
         </Select>
       }>So sánh phòng</PageTitle>
+      {removedNote.length > 0 && <div className="mb-3"><Notice tone="warn">Đã bỏ khỏi so sánh vì không còn hiển thị: {removedNote.join(", ")}.</Notice></div>}
       <ErrorBox error={q.error} className="mb-4" />
       {q.isLoading ? <Loading /> : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -89,8 +112,8 @@ export default function ComparePage() {
                 <tr key={row.key} className="border-t border-slate-100">
                   <td className="p-3 font-medium text-slate-600">{row.label}</td>
                   {rooms.map((r) => (
-                    <td key={r.id} className={cx("p-3", best[row.key] === r.id && "bg-emerald-50 font-semibold text-emerald-700")}>
-                      {row.render(r)} {best[row.key] === r.id && <span title="Tốt nhất">🏆</span>}
+                    <td key={r.id} className={cx("p-3", isBest(row.key, r) && "bg-emerald-50 font-semibold text-emerald-700")}>
+                      {row.render(r)} {isBest(row.key, r) && <span title="Tốt nhất">🏆</span>}
                     </td>
                   ))}
                 </tr>

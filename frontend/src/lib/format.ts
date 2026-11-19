@@ -56,11 +56,15 @@ export function vnInputValue(offsetHours: number, roundMinutes = 0, round: "up" 
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour") === "24" ? "00" : get("hour")}:${get("minute")}`;
 }
 
+/** Ngày hôm nay theo giờ Việt Nam, dạng YYYY-MM-DD (toISOString() là ngày UTC: sai từ 0h đến 7h sáng). */
+export function todayVN(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
 export function currentMonth(offset = 0): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const [y, m] = todayVN().split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + offset, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 export const ROOM_STATUS_LABEL: Record<string, string> = {
