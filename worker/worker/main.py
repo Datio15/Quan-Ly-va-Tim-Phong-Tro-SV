@@ -2,6 +2,7 @@ import logging
 import os
 import signal
 import time
+from worker import metrics
 from worker.job_runs import process_job_runs
 from worker.outbox import process_sync_outbox
 from worker.queue import poll_ops_ticks_queue
@@ -25,30 +26,8 @@ def _handle_shutdown(signum, frame):
     RUNNING = False
 
 
-_heartbeat = None
-
-
-def _setup_telemetry() -> None:
-    """SPEC §17: số đo worker_heartbeat lên Application Insights (bỏ qua nếu chưa cấu hình)."""
-    global _heartbeat
-    conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING", "").strip().strip('"')
-    if not conn or conn == "CHANGE_ME":
-        return
-    try:
-        from azure.monitor.opentelemetry import configure_azure_monitor
-        from opentelemetry import metrics
-
-        configure_azure_monitor(connection_string=conn)
-        _heartbeat = metrics.get_meter("phongtro.worker").create_counter(
-            "worker_heartbeat", description="Mỗi phút một lần khi worker còn chạy")
-        logger.info("Đã bật Application Insights cho worker")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Không bật được Application Insights: %s", type(exc).__name__)
-
-
 def emit_heartbeat() -> None:
-    if _heartbeat is not None:
-        _heartbeat.add(1)
+    metrics.count("worker_heartbeat")
     logger.info("[Heartbeat] Worker hoạt động bình thường.")
 
 
@@ -73,7 +52,7 @@ def main() -> None:
         "heartbeat": emit_heartbeat,
     }
 
-    _setup_telemetry()
+    metrics.setup()
     logger.info("Khởi động Worker service...")
     while RUNNING:
         now = time.monotonic()

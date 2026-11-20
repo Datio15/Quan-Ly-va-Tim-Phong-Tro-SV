@@ -9,6 +9,7 @@ from minio import Minio
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from worker import metrics
 from worker.db import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,20 @@ def _build_public_document(db: Session, room_row: Any, image_urls: list[str]) ->
     return {k: v for k, v in raw_doc.items() if k in ALLOWED_FIELDS}
 
 
+def _report_outbox_gauges() -> None:
+    """Số đo outbox_pending, outbox_failed (SPEC §17). Lỗi đọc số đo không được làm hỏng vòng đồng bộ."""
+    try:
+        with SessionLocal() as db:
+            pending, failed = db.execute(text(
+                "SELECT count(*) FILTER (WHERE status = 'pending'), count(*) FILTER (WHERE status = 'failed') "
+                "FROM sync_outbox"
+            )).one()
+        metrics.gauge("outbox_pending", pending)
+        metrics.gauge("outbox_failed", failed)
+    except Exception:  # noqa: BLE001
+        logger.debug("[Outbox] không đọc được số đo outbox", exc_info=True)
+
+
 def process_sync_outbox() -> None:
     """Xử lý batch tối đa 10 bản ghi đến hạn trong sync_outbox."""
     global _warned_missing_key
@@ -185,6 +200,7 @@ def process_sync_outbox() -> None:
             _warned_missing_key = True
         return
     _warned_missing_key = False
+    _report_outbox_gauges()
 
     with SessionLocal() as db:
         rows = db.execute(
@@ -261,10 +277,12 @@ def process_sync_outbox() -> None:
                     {"oid": outbox_id},
                 )
                 db.commit()
+                metrics.count("sync_sent", op=op)
                 logger.info("[Outbox] Đồng bộ thành công room=%s op=%s (id=%s)", room_id, op, outbox_id)
 
             except Exception as exc:
                 db.rollback()
+                metrics.count("sync_failures", op=op)
                 new_attempts = int(item["attempts"]) + 1
                 err_msg = str(exc)[:500]
                 if new_attempts >= max_attempts:

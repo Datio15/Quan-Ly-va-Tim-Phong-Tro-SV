@@ -73,6 +73,7 @@ Theo báo cáo kiểm thử QA 18/11 (`docs/bao-cao-kiem-thu-2026-11-18.md`) và
 | 10.2 | Thêm `POST /landlord/invoices/{id}/void`; `/images/{id}` không token chỉ trả ảnh đã duyệt của phòng công khai; link file 60 giây; `/rooms/compare` trả `missing`; báo cáo trùng trả 200; `/sync/resync` tăng `version` | BE-04, BE-10, BE-11, BE-13, FE-13 |
 | 10.3, 11.3 | Tìm kiếm dự phòng không phân biệt dấu, mọi từ phải khớp, có `facets`; `price_min > price_max` → 422; kết quả Azure thiếu ảnh thì lấy ảnh từ CSDL | BE-12 |
 | 12, 16 | Worker chạy `backup.sh`/`restore-test.sh` cho dòng `job_runs` `queued`; image worker có `pg_dump` 16, `openssl`, `curl` và hai script; heartbeat lên App Insights; xóa `public_url` khi gỡ blob | Hoàn thiện mục 12.1 |
+| 16, 17 | `backup.sh` dump và đếm số dòng trong cùng snapshot; worker phát đủ số đo mục 17 (thêm `outbox_failed`); 4 quy tắc cảnh báo tạo bằng `infra/azure/alerts.sh`; cửa sổ "worker chết" 10 phút | Khôi phục thử báo lệch khi có ghi dữ liệu lúc sao lưu; TC22 |
 | 13 | Service `worker` không còn `depends_on: db` (trên vm-app không có db); có volume `backups` | Theo mã |
 | 15 | Thêm `API_DOCS`, `DRY_RUN`, `JOB_TIMEOUT_SECONDS`; ghi rõ `MINIO_BUCKET_*`, `AZURE_KEY_VAULT_URL` | Theo mã |
 | 19 | Mật khẩu cần chữ và số, không bị cắt khoảng trắng; tên và tiêu đề không chứa `<` `>`; ảnh tải lên được mã hóa lại; nginx thêm header bảo mật và che query string trong log | BE-07, BE-10, BE-11, BE-17 |
@@ -1021,7 +1022,7 @@ v0.5 thêm `API_DOCS` vào `.env.example`. `.env.example` bản v0.4 đã bỏ b
 |---|---|
 | Lịch | 02:00 hằng ngày (cron trên vm-data); Function Timer gửi `daily_backup` làm dự phòng (worker trên vm-app chạy `backup.sh`) |
 | Chạy theo yêu cầu | Nút "Sao lưu ngay", "Khôi phục thử" ở trang Hệ thống → dòng `job_runs` `queued` → worker chạy script (mục 12.1) |
-| Nội dung | `db.dump` (`pg_dump -Fc`), thư mục MinIO `private`, `public-src` (nếu cấu hình `mc`), `manifest.json` (số dòng 9 bảng chính, SHA-256) |
+| Nội dung | `db.dump` (`pg_dump -Fc`), thư mục MinIO `private`, `public-src` (nếu cấu hình `mc`), `manifest.json` (số dòng 9 bảng chính, SHA-256). Bản dump và số dòng lấy trong **cùng một snapshot** (`pg_export_snapshot` + `pg_dump --snapshot`), nên dữ liệu ghi trong lúc sao lưu không làm khôi phục thử báo lệch |
 | Mã hóa | `openssl enc -aes-256-cbc -pbkdf2 -iter 200000`, khóa `BACKUP_PASSPHRASE` (gốc ở Key Vault) |
 | Nơi lưu | Blob `backups/<YYYY>/<MM>/phongtro-<YYYYMMDDTHHMMSSZ>.tar.gz.enc`; 3 bản gần nhất ở `/var/backups/phongtro` |
 | Quyền | Ghi bằng SAS `cw` (không đọc, không xóa); khôi phục bằng SAS `rl` |
@@ -1041,19 +1042,21 @@ Kịch bản demo: (1) bấm "Sao lưu ngay" ở trang quản trị, (2) mở Az
 |---|---|---|
 | Thời gian phản hồi, số lỗi 5xx theo route | api (OpenTelemetry tự động) | Hiệu năng |
 | `search_fallback_count` | api | Số lần tìm bằng DB vì Azure lỗi |
-| `sync_sent`, `sync_failures`, `outbox_pending` | worker | Sức khỏe đồng bộ |
+| `sync_sent`, `sync_failures`, `outbox_pending`, `outbox_failed` | worker | Sức khỏe đồng bộ (`outbox_failed`: số dòng đã thử đủ lần và bỏ cuộc) |
 | `backup_success`, `backup_duration_ms`, `restore_test_ms` | worker | Sao lưu |
 | `worker_heartbeat` | worker | Worker còn sống |
 
 | Quy tắc cảnh báo | Điều kiện |
 |---|---|
-| Đồng bộ lỗi | `sync_failures` > 0 trong 15 phút |
-| Worker chết | Không có `worker_heartbeat` trong 5 phút |
-| Sao lưu trễ | Không có `backup_success` trong 26 giờ |
+| Đồng bộ lỗi | `sync_failures` > 0 trong 15 phút, hoặc `outbox_failed` > 0 (worker thử lại tới 30 phút một lần nên chỉ `sync_failures` thì cảnh báo tự tắt giữa chừng) |
+| Worker chết | Không có `worker_heartbeat` trong 10 phút (số đo xuất 60 giây một lần, Application Insights nhận trễ 1-3 phút; cửa sổ 5 phút dễ báo nhầm) |
+| Sao lưu trễ | Không có `backup_success` với `uploaded = true` trong 26 giờ (chỉ tính bản do worker chạy) |
 | api lỗi nhiều | Tỷ lệ 5xx > 5% trong 5 phút |
 | Chi phí | Budget đạt 50%, 80%, 100% |
 
-Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị (hoặc email). Không đưa dữ liệu cá nhân vào số đo hay nhật ký.
+Tất cả gửi qua Action Group `ag-phongtro-alerts` → Logic App `logic-phongtro-alerts` → Telegram nhóm quản trị. Không đưa dữ liệu cá nhân vào số đo hay nhật ký.
+
+Bốn quy tắc đầu là log search alert trên bảng `customMetrics`/`requests` của `appi-phongtro`, tạo bằng `infra/azure/alerts.sh` (chạy lại được). Số đo worker nằm ở `worker/worker/metrics.py`; `METRICS_CONSOLE=1` in số đo ra log để thử không cần Azure. Budget gắn Action Group trên portal.
 
 ---
 

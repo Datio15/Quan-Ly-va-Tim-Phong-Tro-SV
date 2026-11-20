@@ -18,6 +18,7 @@ import threading
 
 from sqlalchemy import text
 
+from worker import metrics
 from worker.db import engine
 
 log = logging.getLogger("worker.job_runs")
@@ -84,6 +85,7 @@ def _run(job_id: int, job: str) -> None:
         proc = subprocess.run(["bash", script, *args], env=env, capture_output=True, text=True, timeout=TIMEOUT_S)
         if proc.returncode == 0:
             log.info("[JobRuns] xong %s #%s", job, job_id)
+            _report_metrics(job_id, job)
             return
         lines = (proc.stderr or proc.stdout or "").strip().splitlines()
         tail = _scrub(lines[-1]) if lines else ""
@@ -98,6 +100,24 @@ def _run(job_id: int, job: str) -> None:
         _mark_failed(job_id, {"error": type(exc).__name__})
     finally:
         _busy.release()
+
+
+def _report_metrics(job_id: int, job: str) -> None:
+    """backup_success, backup_duration_ms, restore_test_ms (SPEC §17), lấy từ chi tiết script đã ghi vào job_runs."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT status, details FROM job_runs WHERE id = :i"), {"i": job_id}).mappings().first()
+        if not row or row["status"] != "success":
+            return
+        d = row["details"] or {}
+        if job == "backup":
+            metrics.count("backup_success", uploaded="true" if d.get("uploaded") else "false")
+            if d.get("duration_ms") is not None:
+                metrics.observe("backup_duration_ms", d["duration_ms"])
+        elif d.get("total_ms") is not None:
+            metrics.observe("restore_test_ms", d["total_ms"])
+    except Exception:  # noqa: BLE001
+        log.debug("không đọc được kết quả job #%s để ghi số đo", job_id, exc_info=True)
 
 
 def _mark_failed(job_id: int, details: dict) -> None:
