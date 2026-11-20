@@ -41,7 +41,7 @@ docker compose up -d --build
 | MinIO console | http://localhost:9001 |
 | PostgreSQL | localhost:5432 |
 
-Kiểm thử: `docker compose exec api pytest -q` (21 kiểm thử, gồm TC01–TC12).
+Kiểm thử: `docker compose exec api pytest -q` (37 kiểm thử: TC01–TC12, các ca của báo cáo QA 18/11, sao lưu qua worker).
 
 ### Tài khoản demo
 
@@ -81,8 +81,8 @@ docker compose -p cloudproject down
 
 | Phần | Tình trạng | Hệ quả khi chạy |
 |---|---|---|
-| **Worker** (`worker/`, Người 2 + 6) | Chưa viết | `sync_outbox` nằm mãi ở `pending` (trang Hệ thống hiện 65 dòng chờ). Bấm "Sao lưu ngay" / "Khôi phục thử" thì việc chỉ ở trạng thái `queued`. Không có nhắc lịch Telegram. Liên kết Telegram sinh được link nhưng chưa ai khớp mã. |
-| **Azure Functions** `ingest-room`, `daily-ticks` (Người 5) | Chưa viết | Chưa có tin nào lên Azure AI Search. |
+| **Worker** (`worker/`, Người 6) | Đã có (20/11) | Cần `AZURE_FUNCTION_INGEST_URL`, `AZURE_FUNCTION_KEY`, `AZURE_STORAGE_CONNECTION_STRING` thì mới đồng bộ được lên Azure; thiếu thì outbox, hàng đợi tạm dừng, không báo lỗi. Sao lưu/khôi phục thử chạy được qua trang Hệ thống. |
+| **Azure Functions** (Người 5) | Đã có code 4 hàm | `ingest-room` cần khóa hàm cho worker; xem mục "Thứ tự bật Azure" bên dưới. |
 | **Kết nối Azure thật** | Chưa thử | Tìm kiếm luôn dùng CSDL (huy hiệu "Dự phòng CSDL"). Bản đồ hiện "Chưa cấu hình Azure Maps". Code gọi Azure Search / Maps đã viết nhưng **chưa được kiểm tra với dịch vụ thật**. |
 | **Application Insights** | Có code, chưa thử | Chỉ bật khi có `APPLICATIONINSIGHTS_CONNECTION_STRING`. |
 | **Alembic** | Chưa dựng | `schema.sql` vẫn là nguồn duy nhất. Đổi CSDL về sau thì dựng Alembic. |

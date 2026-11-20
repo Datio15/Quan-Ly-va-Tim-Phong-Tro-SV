@@ -25,7 +25,7 @@ uvicorn app.main:app --reload
 ## Kiểm thử
 
 ```bash
-docker compose exec api pytest -q        # 21 kiểm thử: TC01-TC12 + rate limit, upload ảnh, trạng thái hệ thống
+docker compose exec api pytest -q        # 37 kiểm thử: TC01-TC12, báo cáo QA 18/11, sao lưu qua worker
 ```
 
 `tests/test_search_filter.py` không cần CSDL (dịch tham số sang OData). `tests/test_api.py` gọi api thật với dữ liệu seed và tạo dữ liệu thử mới mỗi lần (nhà, phòng "Phòng thử nghiệm 20m²", tài khoản `sv-…@example.com`). Muốn sạch lại: `docker compose down && rm -rf data/postgres && docker compose up -d`.
