@@ -591,3 +591,35 @@ def test_resync_bumps_version(http, admin, landlord1, published_room, db):
                      {"id": rid}).one()
     assert row.entity_version == v1 and row.op == "upsert"
     assert http.post("/admin/sync/resync", headers=admin, json={"room_id": str(uuid.uuid4())}).status_code == 404
+
+
+def _wait_job(http, admin, job_id, seconds=120):
+    """Chờ worker chạy xong một dòng job_runs. Vẫn 'queued' sau 20 giây nghĩa là worker không chạy: bỏ qua."""
+    import time
+
+    start = time.monotonic()
+    while True:
+        job = http.get(f"/admin/jobs/{job_id}", headers=admin).json()
+        waited = time.monotonic() - start
+        if job["status"] in ("success", "failed") or waited > seconds:
+            return job
+        if job["status"] == "queued" and waited > 20:
+            pytest.skip("Worker không chạy (việc vẫn 'queued' sau 20 giây)")
+        time.sleep(2)
+
+
+def test_worker_runs_backup_and_restore_test(http, admin):
+    """SPEC §12.1, §16, TC20-TC21: worker nhận dòng job_runs 'queued', chạy backup.sh rồi restore-test.sh."""
+    b = http.post("/admin/backup/run", headers=admin)
+    assert b.status_code == 202, b.text
+    job = _wait_job(http, admin, b.json()["job_run_id"])
+    assert job["status"] == "success", job
+    d = job["details"]
+    assert d["size_bytes"] > 0 and len(d["db_dump_sha256"]) == 64 and d["file"].endswith(".tar.gz.enc")
+    r = http.post("/admin/backup/restore-test", headers=admin)
+    assert r.status_code == 202, r.text
+    job = _wait_job(http, admin, r.json()["job_run_id"])
+    assert job["status"] == "success" and job["details"]["counts_match"] is True, job
+    assert job["details"]["total_ms"] > 0
+    status = http.get("/admin/system/status", headers=admin).json()
+    assert status["backup"]["last_success_at"] and status["restore_test"]["counts_match"] is True

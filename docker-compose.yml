@@ -6,7 +6,7 @@
 #
 # Trên VM thật:
 #   vm-data: DATA_DIR=/srv/data;  docker compose up -d db minio
-#   vm-app : DB_HOST, MINIO_ENDPOINT = IP nội bộ vm-data;  docker compose up -d --build api web (worker khi sẵn sàng)
+#   vm-app : DB_HOST, MINIO_ENDPOINT = IP nội bộ vm-data;  docker compose up -d --build api web worker
 # api KHÔNG khai báo depends_on db/minio để trên vm-app không vô tình khởi động db/minio cục bộ;
 # api tự chờ CSDL lúc khởi động (app/seed_passwords.py) và restart: unless-stopped lo phần còn lại.
 services:
@@ -57,13 +57,18 @@ services:
       retries: 5
       start_period: 30s
 
-  # Bỏ chú thích khi mô-đun worker sẵn sàng (Người 2, 6).
+  # Worker (Người 6): outbox → Azure, hàng đợi ops-ticks, Telegram, chạy backup.sh / restore-test.sh (SPEC §12).
   worker:
-    build: ./worker
+    build:
+      context: ./worker
+      additional_contexts:
+        scripts: ./scripts      # backup.sh, restore-test.sh được chép vào image (SPEC §16)
     env_file: .env
     restart: unless-stopped
-    depends_on:
-      db: { condition: service_healthy }
+    volumes:
+      - backups:/var/backups/phongtro   # giữ KEEP_LOCAL bản sao lưu gần nhất khi tạo lại container
+    # Không khai báo depends_on db: trên vm-app không có db (DB_HOST là IP vm-data), giống service api.
+    # Chạy local: db khởi động cùng lúc, worker tự kết nối lại (pool_pre_ping) và restart: unless-stopped.
 
   web:
     build: ./frontend
@@ -71,3 +76,6 @@ services:
     depends_on: [api]
     ports:
       - "80:80"
+
+volumes:
+  backups:
