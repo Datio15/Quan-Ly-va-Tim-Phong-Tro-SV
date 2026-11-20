@@ -51,8 +51,29 @@ trap 'fail "line $LINENO"' ERR
 
 mkdir -p "$BACKUP_DIR" "$work/bundle"
 
-# 1. CSDL (định dạng custom của pg_dump, nén sẵn)
-pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Fc -f "$work/bundle/db.dump"
+# 1. CSDL và số dòng trong CÙNG MỘT snapshot. Một phiên psql giữ transaction REPEATABLE READ, xuất snapshot;
+#    pg_dump dùng đúng snapshot đó và số dòng cũng đếm trong transaction đó. Nếu đếm bằng truy vấn riêng sau
+#    khi dump, dòng ghi trong lúc dump làm manifest lệch bản dump và khôi phục thử báo "LỆCH" dù bản sao lưu đúng.
+coproc SNAP { psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -Atq 2>&1; }
+snap_q() {
+  local out
+  echo "$1" >&"${SNAP[1]}"
+  read -r -t 120 out <&"${SNAP[0]}" || return 1
+  printf '%s' "$out"
+}
+snapshot="$(snap_q "BEGIN ISOLATION LEVEL REPEATABLE READ; SELECT pg_export_snapshot();")"
+[[ "$snapshot" =~ ^[0-9A-Fa-f-]+$ ]] || fail "snapshot"
+pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --snapshot="$snapshot" -Fc -f "$work/bundle/db.dump"
+counts="{"
+for t in $TABLES; do
+  n="$(snap_q "SELECT count(*) FROM $t;")"
+  [[ "$n" =~ ^[0-9]+$ ]] || fail "count $t"
+  counts+="\"$t\": $n,"
+done
+counts="${counts%,}}"
+echo "COMMIT;" >&"${SNAP[1]}"
+exec {SNAP[1]}>&-
+wait "$SNAP_PID" 2>/dev/null || true
 
 # 2. File trong MinIO (nếu đã cấu hình mc)
 minio_included=false
@@ -63,12 +84,7 @@ if [[ -n "${MC_ALIAS:-}" ]] && command -v mc >/dev/null 2>&1; then
   minio_included=true
 fi
 
-# 3. Manifest: số dòng các bảng chính + mã băm, để khôi phục thử đối chiếu
-counts="{"
-for t in $TABLES; do
-  counts+="\"$t\": $(psql_q -c "SELECT count(*) FROM $t"),"
-done
-counts="${counts%,}}"
+# 3. Manifest: số dòng các bảng chính (đếm ở bước 1) + mã băm, để khôi phục thử đối chiếu
 db_sha="$(sha256sum "$work/bundle/db.dump" | cut -d' ' -f1)"
 cat > "$work/bundle/manifest.json" <<EOF
 {

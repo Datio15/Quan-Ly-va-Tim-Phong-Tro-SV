@@ -11,7 +11,7 @@ Bài tập lớn môn Điện toán đám mây. Hệ thống hai phía (sinh vi�
 ```bash
 cp .env.example .env              # điền DB_PASSWORD, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD, JWT_SECRET, SEED_DEMO_PASSWORD (≥ 8 ký tự)
 docker compose up -d --build      # db + minio + api + web; lần đầu tự nạp schema + 80 phòng dữ liệu giả
-docker compose exec api pytest -q # kiểm thử TC01-TC12
+docker compose exec api pytest -q # kiểm thử TC01-TC12, các ca báo cáo QA 18/11, sao lưu qua worker
 ```
 
 Web: http://localhost · API docs: http://localhost:8000/api/docs · MinIO console: http://localhost:9001 · PostgreSQL: localhost:5432.
@@ -26,9 +26,9 @@ Chưa cấu hình Azure thì tìm kiếm tự dùng CSDL (header `X-Search-Sourc
 | `backend/db/schema.sql` | CSDL: 21 bảng, view `v_rooms_public`, hàm chi phí và khoảng cách | Người 2 |
 | `seed/` | `generate_seed.py` sinh dữ liệu giả tái lập được; `seed.sql` là kết quả | Người 1 |
 | `backend/` | API FastAPI – xem [backend/README.md](backend/README.md) (kèm danh sách đề xuất bổ sung SPEC) | Người 2 |
-| `worker/` | Worker (sẽ viết) | Người 2, 6 |
+| `worker/` | Worker: outbox → Azure, hàng đợi `ops-ticks`, Telegram, chạy sao lưu/khôi phục thử | Người 6 (Telegram: Người 1) |
 | `frontend/` | React + Vite + Tailwind – xem [frontend/README.md](frontend/README.md) | Người 3 |
-| `azure-functions/` | `search-index.json`; Function `ingest-room`, `daily-ticks` (sẽ viết) | Người 5 |
+| `azure-functions/` | `search-index.json`; Function `ingest-room`, `tick-now`, `daily-ticks-morning`, `daily-ticks-backup` | Người 5 |
 | `infra/openstack/` | `setup.sh` dựng project, mạng, VM, volume; `cloud-init.yaml` | Người 4 |
 | `infra/azure/` | `setup.sh` dựng Storage, AI Search, Maps, Key Vault, App Insights, Function App | Người 5 |
 | `scripts/` | `backup.sh` (mã hóa, tải lên Blob), `restore-test.sh` (khôi phục thử, đối chiếu) | Người 4, 6 |

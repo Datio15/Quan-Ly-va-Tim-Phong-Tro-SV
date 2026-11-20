@@ -1,6 +1,6 @@
 # SPEC – Quản lý và tìm phòng trọ cho sinh viên (Azure + OpenStack)
 
-Phiên bản 0.4 · 14/11/2026 · Người giữ file: Người 1 (Đặng Thế Đạt, nhóm trưởng)
+Phiên bản 0.5 · 20/11/2026 · Người giữ file: Người 1 (Đặng Thế Đạt, nhóm trưởng)
 
 File này là **nguồn sự thật duy nhất** về kiến trúc, dữ liệu, API và quy ước. Khi nhờ AI sinh code, dán phần liên quan của file này (mục 0 chỉ rõ phần nào cho mô-đun nào). **Muốn đổi tên bảng, API hay luồng dữ liệu thì sửa file này trước, báo cả nhóm, rồi mới sửa code.**
 
@@ -20,10 +20,12 @@ File đi kèm (đã chạy thử, xem README):
 | `scripts/backup.sh`, `scripts/restore-test.sh` | Sao lưu mã hóa lên Azure Blob, khôi phục thử có đối chiếu |
 | `infra/openstack/setup.sh`, `cloud-init.yaml` | Dựng project, mạng, security group, VM, volume, floating IP |
 | `infra/azure/setup.sh` | Dựng Storage, AI Search + chỉ mục, Maps, Key Vault, App Insights, Function App |
-| `backend/app/`, `backend/tests/` | Backend API đã code (FastAPI), 21 kiểm thử gồm TC01–TC12 |
+| `backend/app/`, `backend/tests/` | Backend API (FastAPI); 37 kiểm thử: TC01–TC12, các ca của báo cáo QA 18/11, sao lưu qua worker |
 | `frontend/` | Web đã code (React 18 + Vite + TypeScript + Tailwind), nginx proxy `/api/*` |
 | `azure-functions/function_app.py` | `ingest-room`, `tick-now`, `daily-ticks-morning`, `daily-ticks-backup` (mục 11) |
-| `LUU-Y.md`, `backend/README.md` | Cách chạy, tài khoản demo, lưu ý cổng và bảo mật của web |
+| `backend/db/migrations/` | Thay đổi CSDL sau bản đầu, áp lên CSDL đang chạy (mục 8) |
+| `docs/bao-cao-kiem-thu-2026-11-18.md` | Báo cáo kiểm thử QA 18/11: 32 lỗi, cách sửa, trạng thái |
+| `LUU-Y.md`, `backend/README.md` | Cách chạy, tài khoản demo, lưu ý cổng và bảo mật của web; thứ tự bật Azure |
 
 ### Thành viên
 
@@ -40,17 +42,41 @@ File đi kèm (đã chạy thử, xem README):
 
 Backend API và web đã code xong phần lõi trong repo `Anh-cybersecurity/EasyRent` (thư mục `backend/`, `frontend/`; 21 kiểm thử, gồm TC01–TC12, đạt ở máy cá nhân). **Từ v0.4, mã này là bản chuẩn.** Chỗ nào SPEC v0.3 và mã khác nhau thì SPEC đã sửa theo mã (bảng dưới). Worker, Azure Functions và OpenStack viết theo SPEC này để khớp với web đã có, không sửa API của web nếu chưa sửa SPEC.
 
-### Hiện trạng ngày 14/11
+### Hiện trạng ngày 20/11
+
+Kiểm tra ngày 20/11 bằng mã trên `main` và các lệnh chỉ đọc tới Azure, VM.
 
 | Phần | Tình trạng |
 |---|---|
-| Backend API | Xong F01–F09, F11, F14, F16, F17 (phần api của F10, F12, F13); chưa chạy trên VM |
-| Web | Xong các trang ở mục 6; build thành công; chưa chạy trên VM |
-| Hạ tầng Azure | Đã kiểm đạt 14/11: Storage, AI Search + chỉ mục, Key Vault, Function App (chưa có hàm), Maps, Budget |
-| Azure Functions | Đang viết và deploy, hạn 15/11 (Người 5) |
-| Worker | Đang viết vòng outbox, hạn 15/11 (Người 6) |
-| OpenStack | VM chưa chạy được (lỗi cloud-init); Tailscale chưa ai cài; Người 2 tiếp nhận |
-| Telegram, Logic App | Chưa làm (Người 1) |
+| Backend API | Xong F01–F09, F11, F14, F16, F17 và phần api của F10, F12, F13; đã sửa 32 lỗi của báo cáo QA 18/11 (PR #15, #17); 19/11 đã chạy trên VM |
+| Web | Xong; 19/11 đã chạy trên VM, tìm kiếm qua Azure AI Search |
+| Hạ tầng Azure | Storage, AI Search, Key Vault, Maps, App Insights, Function App (đã có gói deploy). Chỉ mục `rooms-public` có 65 tài liệu nhưng **chưa có ảnh** (`version` đều là 1: chưa có lần đồng bộ nào từ worker). Blob `backups` chưa có bản nào |
+| Azure Functions | Đủ 4 hàm trong `function_app.py`; `ingest-room` chưa chạy được với worker trên VM (worker chưa có `AZURE_FUNCTION_INGEST_URL`, `AZURE_FUNCTION_KEY`) |
+| Worker | Có outbox (kèm đẩy ảnh sang Blob), hàng đợi `ops-ticks`, Telegram, ba việc nhắc; v0.5 thêm chạy `backup.sh`/`restore-test.sh` và heartbeat. Chưa chạy với Azure thật trên VM |
+| OpenStack | 19/11 web và api chạy trên VM; 20/11 VM không truy cập được từ máy kiểm tra (cần xem lại Tailscale/máy host). TC19 chưa có kết quả |
+| Telegram | Có trong worker (liên kết tài khoản, gửi nhắc); chưa thử `tick-now` → Telegram (TC18) |
+| Logic App cảnh báo | Chưa có trong repo (F15, TC22) |
+| Sao lưu (F13) | Script có; worker chạy được qua trang quản trị (v0.5); TC20, TC21 chưa chạy với Azure thật |
+
+### Thay đổi so với v0.4
+
+Theo báo cáo kiểm thử QA 18/11 (`docs/bao-cao-kiem-thu-2026-11-18.md`) và việc hoàn thiện worker. Mã BE-xx, FE-xx là mã lỗi trong báo cáo.
+
+| Mục | Thay đổi | Lý do |
+|---|---|---|
+| 8 | Thêm `backend/db/migrations/` (`2026-11-18-gioi-han-tien.sql`, `2026-11-19-sua-loi-qa.sql`); extension `unaccent`; chỉ mục duy nhất một hợp đồng đang hiệu lực mỗi phòng; `(tenant_id, period)` của hóa đơn bỏ qua hóa đơn `void`; CHECK giới hạn tiền | BE-01..04, BE-12 |
+| 9.1 | Gửi duyệt cần ít nhất 1 ảnh chưa bị loại; `approve` cần còn ít nhất 1 ảnh đạt; duyệt ảnh khi không có ảnh chờ không tăng `version` | BE-09 |
+| 9.3 | Giờ hẹn theo mốc 15 phút, 07:00–21:00; sinh viên không có hai lịch cách nhau dưới 1 giờ; không xác nhận lịch đã qua; ghi chú khi sinh viên hủy được lưu | BE-08 |
+| 9.6 | Tọa độ nhà đủ cả hai hoặc trống cả hai; nhà có phòng đang hiển thị không bỏ được tọa độ | BE-15 |
+| 9.8 | Một hợp đồng đang hiệu lực mỗi phòng, số người ≤ `max_people`; hóa đơn bỏ qua khách hết hợp đồng; hủy hóa đơn để tạo lại; chỉ số công tơ tăng dần | BE-03..05 |
+| 10.1 | `RATE_LIMITED` chỉ đếm lần sai; mã mới `TENANT_EXISTS`; lỗi CSDL ở lệnh đọc trả 500; mọi thời gian dạng `+07:00` | BE-06, BE-14 |
+| 10.2 | Thêm `POST /landlord/invoices/{id}/void`; `/images/{id}` không token chỉ trả ảnh đã duyệt của phòng công khai; link file 60 giây; `/rooms/compare` trả `missing`; báo cáo trùng trả 200; `/sync/resync` tăng `version` | BE-04, BE-10, BE-11, BE-13, FE-13 |
+| 10.3, 11.3 | Tìm kiếm dự phòng không phân biệt dấu, mọi từ phải khớp, có `facets`; `price_min > price_max` → 422; kết quả Azure thiếu ảnh thì lấy ảnh từ CSDL | BE-12 |
+| 12, 16 | Worker chạy `backup.sh`/`restore-test.sh` cho dòng `job_runs` `queued`; image worker có `pg_dump` 16, `openssl`, `curl` và hai script; heartbeat lên App Insights; xóa `public_url` khi gỡ blob | Hoàn thiện mục 12.1 |
+| 16, 17 | `backup.sh` dump và đếm số dòng trong cùng snapshot; worker phát đủ số đo mục 17 (thêm `outbox_failed`); 4 quy tắc cảnh báo tạo bằng `infra/azure/alerts.sh`; cửa sổ "worker chết" 10 phút | Khôi phục thử báo lệch khi có ghi dữ liệu lúc sao lưu; TC22 |
+| 13 | Service `worker` không còn `depends_on: db` (trên vm-app không có db); có volume `backups` | Theo mã |
+| 15 | Thêm `API_DOCS`, `DRY_RUN`, `JOB_TIMEOUT_SECONDS`; ghi rõ `MINIO_BUCKET_*`, `AZURE_KEY_VAULT_URL` | Theo mã |
+| 19 | Mật khẩu cần chữ và số, không bị cắt khoảng trắng; tên và tiêu đề không chứa `<` `>`; ảnh tải lên được mã hóa lại; nginx thêm header bảo mật và che query string trong log | BE-07, BE-10, BE-11, BE-17 |
 
 ### Thay đổi so với v0.3
 
@@ -287,7 +313,8 @@ phongtro/
 ├─ SPEC.md  README.md  LUU-Y.md  docker-compose.yml  .env.example  .gitignore
 ├─ backend/
 │  ├─ Dockerfile
-│  ├─ db/schema.sql            # bản đầu của CSDL (đã chạy thử)
+│  ├─ db/schema.sql            # CSDL cho bản cài mới (đã gồm mọi migration)
+│  ├─ db/migrations/           # thay đổi sau bản đầu, áp lên CSDL đang chạy (chạy lại được nhiều lần)
 │  ├─ app/
 │  │  ├─ main.py               # tạo FastAPI, gắn router, middleware đo thời gian
 │  │  ├─ config.py             # đọc biến môi trường (pydantic-settings)
@@ -297,11 +324,13 @@ phongtro/
 │  │  ├─ routers/              # auth, public, rooms, bookings, landlord, landlord_ops, admin, health
 │  │  ├─ services/             # search_service (Azure + dự phòng), rooms_public, cost, outbox, storage, invoices
 │  │  ├─ security.py           # băm mật khẩu, JWT, phụ thuộc kiểm tra vai trò
-│  │  └─ seed_passwords.py     # đặt mật khẩu tài khoản demo từ SEED_DEMO_PASSWORD
-│  └─ tests/                   # test_api.py (TC01-TC12 và thêm), test_search_filter.py
+│  │  ├─ seed_passwords.py     # đặt mật khẩu tài khoản demo từ SEED_DEMO_PASSWORD
+│  │  └─ seed_images.py        # gắn ảnh mẫu (seed/room-photos) cho phòng mẫu, một lần mỗi CSDL
+│  └─ tests/                   # test_api.py (TC01-TC12, báo cáo QA 18/11, sao lưu), test_search_filter.py
 ├─ worker/
 │  ├─ Dockerfile
-│  └─ worker/                  # main.py (vòng lặp), db.py, outbox.py, queue.py, telegram.py, jobs/
+│  └─ worker/                  # main.py (vòng lặp), db.py, outbox.py, queue.py, telegram.py, jobs/, job_runs.py
+│                              # image còn chép scripts/backup.sh, restore-test.sh (ngữ cảnh build phụ)
 ├─ frontend/
 │  ├─ Dockerfile  nginx.conf
 │  └─ src/
@@ -385,8 +414,8 @@ sync_outbox, job_runs, processed_messages, notifications, audit_log: bảng kỹ
 |---|---|---|
 | Người dùng | `users`, `schools` | Email duy nhất không phân biệt hoa thường |
 | Tin đăng | `houses`, `rooms`, `room_amenities`, `amenities`, `room_images`, `cost_rates` | `houses.area` là khu vực quen gọi để lọc (mục 9.6) |
-| Sinh viên | `favorites`, `saved_searches`, `bookings`, `reviews`, `reports` | Chỉ mục duy nhất chặn hai lịch hiệu lực trùng giờ; `saved_searches` có trong `schema.sql` nhưng chưa dùng (F20 đã bỏ) |
-| Chủ trọ | `tenants`, `meter_readings`, `invoices` | `invoices.total` là cột tự tính |
+| Sinh viên | `favorites`, `saved_searches`, `bookings`, `reviews`, `reports` | Chỉ mục duy nhất chặn hai lịch hiệu lực trùng giờ; báo cáo còn mở của cùng người cho cùng đối tượng không tạo thêm; `saved_searches` có trong `schema.sql` nhưng chưa dùng (F20 đã bỏ) |
+| Chủ trọ | `tenants`, `meter_readings`, `invoices` | `invoices.total` là cột tự tính; chỉ mục duy nhất `tenants(room_id) WHERE is_active` (một hợp đồng đang hiệu lực mỗi phòng); `invoices(tenant_id, period) WHERE status <> 'void'` |
 | Kỹ thuật | `sync_outbox`, `job_runs`, `processed_messages`, `notifications`, `audit_log` | Xem mục 12, 16 |
 
 ### Đối tượng dựng sẵn trong CSDL
@@ -417,8 +446,9 @@ draft ──gửi duyệt──► pending ──duyệt──► published ◄�
 - Sửa phòng đang `published`: giữ `published`, tăng `version`, ghi outbox `upsert`. Ảnh mới thêm vẫn qua kiểm duyệt riêng (`room_images.moderation`).
 - Chuyển khỏi `published` (ẩn, bị từ chối): ghi outbox `delete`.
 - Từ chối phải có `reject_reason`.
-- Gửi duyệt yêu cầu nhà đã có tọa độ (`lat`, `lng`); thiếu thì `422 VALIDATION_ERROR`. Lý do: tìm theo khoảng cách và bản đồ cần tọa độ.
-- Quản trị gỡ phòng đang `published` bằng `reject` (ghi outbox `delete`). Gọi `approve` trên phòng đang `published` chỉ duyệt các ảnh mới đang chờ, phòng giữ `published`.
+- Gửi duyệt yêu cầu nhà đã có tọa độ (`lat`, `lng`) và phòng có ít nhất 1 ảnh chưa bị loại; thiếu thì `422 VALIDATION_ERROR`. Lý do: tìm theo khoảng cách và bản đồ cần tọa độ; tin công khai cần ảnh.
+- `approve` từ chối (`422`) nếu sau khi áp `image_ids_ok` phòng không còn ảnh đạt nào: khi đó quản trị dùng `reject`.
+- Quản trị gỡ phòng đang `published` bằng `reject` (ghi outbox `delete`). Gọi `approve` trên phòng đang `published` chỉ duyệt các ảnh mới đang chờ, phòng giữ `published`; không có ảnh chờ thì không làm gì (không tăng `version`).
 
 ### 9.2 Khi nào ghi `sync_outbox`
 
@@ -433,6 +463,9 @@ requested ──chủ trọ xác nhận──► confirmed ──sau giờ hẹn
 ```
 
 - Chỉ đặt cho phòng `published`, giờ hẹn trong tương lai, cách hiện tại ít nhất 2 giờ, tối đa 14 ngày tới.
+- Giờ hẹn theo mốc 15 phút (`:00`, `:15`, `:30`, `:45`, giây bằng 0), trong khung 07:00–21:00 giờ Việt Nam; sai thì `422`.
+- Một sinh viên không có hai lịch `requested/confirmed` cách nhau dưới 1 giờ (kể cả khác phòng) → `409 BOOKING_CONFLICT`.
+- Chủ trọ không xác nhận được lịch đã qua giờ hẹn (`409 INVALID_TRANSITION`). Sinh viên hủy kèm ghi chú thì ghi chú được nối vào `student_note`.
 - Hai lịch `requested/confirmed` trùng phòng và giờ → `409 BOOKING_CONFLICT` (do chỉ mục duy nhất trong CSDL).
 - Mỗi sinh viên tối đa 3 lịch `requested` cùng lúc.
 - Nhắc lịch: lúc 08:00 mỗi ngày gửi cho các lịch `confirmed` trong 24 giờ tới (một lần, ghi `reminded_at`).
@@ -457,7 +490,7 @@ Mặc định lấy `EST_KWH_PER_MONTH`, `EST_WATER_M3_PER_MONTH`, `EST_PEOPLE`,
 
 ### 9.6 Địa chỉ và khu vực
 
-Từ 1/7/2025 Việt Nam bỏ cấp quận/huyện, nên dữ liệu dùng `ward` (phường/xã) và `area` (khu vực quen gọi, ví dụ "Cầu Giấy", để lọc theo thói quen của sinh viên). Dữ liệu là giả nên tên phường không cần khớp danh mục hành chính. Tọa độ lấy bằng Azure Maps Search (geocode) khi chủ trọ nhập địa chỉ, cho phép kéo ghim trên bản đồ để sửa.
+Từ 1/7/2025 Việt Nam bỏ cấp quận/huyện, nên dữ liệu dùng `ward` (phường/xã) và `area` (khu vực quen gọi, ví dụ "Cầu Giấy", để lọc theo thói quen của sinh viên). Dữ liệu là giả nên tên phường không cần khớp danh mục hành chính. Tọa độ lấy bằng Azure Maps Search (geocode) khi chủ trọ nhập địa chỉ, cho phép kéo ghim trên bản đồ để sửa. Vĩ độ và kinh độ phải có đủ cả hai hoặc trống cả hai; nhà đang có phòng hiển thị không bỏ được tọa độ.
 
 ### 9.7 Khoảng cách tới trường
 
@@ -469,7 +502,10 @@ Từ 1/7/2025 Việt Nam bỏ cấp quận/huyện, nên dữ liệu dùng `ward
 - Hóa đơn tháng M: `điện dùng = chỉ số ngày 1/(M+1) − chỉ số ngày 1/M`; tương tự nước nếu tính theo m³.
 - Tiền nước theo người dùng `tenants.people_count`; gửi xe theo `tenants.vehicle_count`.
 - Mã hóa đơn `HD-YYYYMM-NNNN` (NNNN tăng theo tháng). Hạn thanh toán ngày 10 tháng M+1.
-- Mỗi khách thuê một hóa đơn mỗi tháng (ràng buộc duy nhất). Tạo lại tháng đã có → `409 INVOICE_EXISTS`.
+- Mỗi phòng tối đa một hợp đồng đang hiệu lực (`is_active`); thêm khách khi phòng đang có khách → `409 TENANT_EXISTS`. `people_count` không vượt `rooms.max_people`.
+- Chỉ số công tơ phải tăng dần theo kỳ (không nhỏ hơn kỳ trước, không lớn hơn kỳ sau); kỳ không quá tháng sau của tháng hiện tại.
+- Hóa đơn tháng M chỉ tính cho khách có `start_date` ≤ cuối tháng M và (`end_date` trống hoặc ≥ ngày 1/M). Không chia theo ngày khi vào/ra giữa tháng.
+- Mỗi khách thuê một hóa đơn mỗi tháng (ràng buộc duy nhất, không tính hóa đơn `void`). Tạo lại tháng đã có → `409 INVOICE_EXISTS`. Hóa đơn `unpaid`/`overdue` nhập sai thì hủy (`void`) rồi tạo lại.
 - `unpaid` quá hạn → việc nền `invoice_due_check` chuyển `overdue` và nhắc chủ trọ.
 
 ### 9.9 Hợp đồng sắp hết hạn (F16)
@@ -504,9 +540,10 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | `ROOM_NOT_PUBLISHED` | 409 | Thao tác cần phòng công khai |
 | `INVALID_TRANSITION` | 409 | Chuyển trạng thái không hợp lệ (mục 9) |
 | `INVOICE_EXISTS` | 409 | Hóa đơn tháng đã tạo |
+| `TENANT_EXISTS` | 409 | Phòng đang có hợp đồng hiệu lực (mục 9.8) |
 | `METHOD_NOT_ALLOWED` | 405 | Sai phương thức HTTP |
-| `RATE_LIMITED` | 429 | Quá 10 lần đăng nhập mỗi phút từ một IP |
-| `INTERNAL_ERROR` | 500 | Lỗi không lường trước; không trả chi tiết lỗi cho người dùng |
+| `RATE_LIMITED` | 429 | Đăng nhập **sai** quá 10 lần/phút cho một cặp (IP, email) hoặc 50 lần/phút cho một IP; đăng ký quá 10 lần/10 phút/IP; quá 20 báo cáo/giờ/tài khoản |
+| `INTERNAL_ERROR` | 500 | Lỗi không lường trước; không trả chi tiết lỗi cho người dùng. Lỗi dữ liệu CSDL ở lệnh đọc (GET) cũng trả 500; ở lệnh ghi thì trả `422 VALIDATION_ERROR` |
 | `UPSTREAM_UNAVAILABLE` | 503 | Dịch vụ Azure cần thiết không phản hồi (trừ tìm kiếm, vốn có dự phòng) |
 | `HTTP_ERROR` | khác | Mã HTTP khác không có trong bảng |
 
@@ -532,12 +569,12 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | GET | /search/rooms | Khách | Tìm phòng (10.3) |
 | GET | /rooms/{id} | Khách | Chi tiết phòng công khai |
 | GET | /rooms/{id}/cost | Khách | Chi phí thực tế; query `kwh, m3, people, vehicles` |
-| POST | /rooms/compare | Khách | Body `{"ids":[...2-3], "school_id"?}` |
+| POST | /rooms/compare | Khách | Body `{"ids":[...2-3], "school_id"?}`; trả thêm `missing` (id không còn công khai); chỉ `404` khi còn dưới 2 phòng, kèm `details.missing` |
 | GET | /rooms/{id}/reviews | Khách | Đánh giá (phân trang) |
-| GET | /images/{image_id} | Khách | Ảnh phòng đã duyệt, đọc từ MinIO `public-src` khi ảnh chưa có `public_url` trên Blob; ảnh bị từ chối trả 404 |
-| GET | /files/signed?token=... | Người có link | Trả file CCCD hoặc hợp đồng GIẢ từ bucket `private`; link do api cấp, hạn 5 phút |
+| GET | /images/{image_id} | Khách | Ảnh phòng từ MinIO `public-src` khi ảnh chưa có `public_url` trên Blob. Không có token: chỉ ảnh đã duyệt của phòng đang công khai, còn lại `404`. Có `?t=<token ký>` (api cấp trong trang chủ trọ/quản trị, hạn 1-2 giờ): mọi ảnh của phòng đó |
+| GET | /files/signed?token=... | Người có link | Trả file CCCD hoặc hợp đồng GIẢ từ bucket `private`; link do api cấp, hạn 60 giây |
 | PUT | /rooms/{id}/review | Sinh viên | Tạo hoặc sửa đánh giá của mình |
-| POST | /reports | Sinh viên | Báo cáo phòng/đánh giá |
+| POST | /reports | Sinh viên | Báo cáo phòng/đánh giá; đã có báo cáo còn mở của chính mình cho cùng đối tượng thì trả `200` kèm báo cáo đó (`duplicate: true`) |
 | GET, PUT, DELETE | /favorites, /favorites/{room_id} | Sinh viên | Yêu thích |
 | POST | /bookings | Sinh viên | Đặt lịch |
 | GET | /bookings | Sinh viên, Chủ trọ | Lịch của tôi (chủ trọ: lịch các phòng của mình); lọc `status`; lịch `confirmed` kèm liên hệ hai bên (mục 9.3) |
@@ -557,11 +594,12 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | GET, POST | /tenants | Khách thuê (S) |
 | PATCH | /tenants/{id} | Sửa, kết thúc thuê (S) |
 | POST | /tenants/{id}/files | Tải CCCD/hợp đồng GIẢ vào bucket private (S) |
-| GET | /tenants/{id}/files/{kind} | `kind` là `id_card` hoặc `contract`; trả link `/api/v1/files/signed?token=...` hạn 5 phút (S) |
+| GET | /tenants/{id}/files/{kind} | `kind` là `id_card` hoặc `contract`; trả link `/api/v1/files/signed?token=...` hạn 60 giây (S) |
 | GET, POST | /meter-readings | Xem chỉ số đã nhập (lọc `room_id`), nhập chỉ số tháng (S) |
 | POST | /invoices/generate | Body `{"month":"2026-10"}`: tạo hóa đơn cho mọi khách đang thuê (S) |
 | GET | /invoices | Lọc `month`, `status` (S) |
 | POST | /invoices/{id}/paid | Đánh dấu đã trả (S) |
+| POST | /invoices/{id}/void | Hủy hóa đơn `unpaid`/`overdue` (nhập sai); sau đó tạo lại được hóa đơn tháng đó (S) |
 
 **Quản trị** (tiền tố `/admin`)
 
@@ -575,8 +613,8 @@ Khách thuê đang hiệu lực có `end_date` trong 30 ngày tới → nhắc c
 | GET | /reports | Danh sách báo cáo |
 | POST | /reports/{id}/resolve | Body `{"action": "resolve", "hide_review": false}`; `action` là `resolve` hoặc `dismiss`; `hide_review: true` ẩn đánh giá bị báo cáo |
 | GET | /system/status | Trạng thái (10.4) |
-| POST | /sync/resync | Body `{"room_id": "..."}` hoặc `{}` = mọi phòng công khai |
-| POST | /backup/run | Tạo dòng `job_runs(job='backup', status='queued')`, trả `202` kèm `job_run_id`; worker chạy `backup.sh` |
+| POST | /sync/resync | Body `{"room_id": "..."}` hoặc `{}` = mọi phòng công khai. **Tăng `version`** của các phòng được xếp lại (Function `ingest-room` bỏ qua tài liệu có `version` không lớn hơn bản đang có); `updated_at` của các phòng đó đổi theo |
+| POST | /backup/run | Tạo dòng `job_runs(job='backup', status='queued')`, trả `202` kèm `job_run_id`; worker chạy `backup.sh` (mục 12.1). Đã có dòng `queued/running` thì trả lại dòng đó; dòng treo quá 30 phút được đánh dấu `failed` |
 | POST | /backup/restore-test | Tạo dòng `job_runs(job='restore_test', status='queued')`, trả `202` kèm `job_run_id` |
 | GET | /jobs/{id} | Kết quả một lần chạy |
 
@@ -635,7 +673,7 @@ GET /api/v1/search/rooms?q=gác lửng&price_max=3500000&amenities=dieu_hoa&scho
 
 Header trả về: `X-Search-Source: azure` hoặc `db`.
 
-`thumbnail_url` là URL Blob khi ảnh đã đồng bộ; ảnh chưa đồng bộ thì là `/api/v1/images/{image_id}`.
+`thumbnail_url` là URL Blob khi ảnh đã đồng bộ; ảnh chưa đồng bộ thì là `/api/v1/images/{image_id}`. Kết quả từ Azure mà tài liệu chưa có `image_urls` thì api lấy ảnh đã duyệt đầu tiên trong CSDL. `price_min > price_max` → `422`.
 
 ### 10.4 Ví dụ các API khác
 
@@ -772,7 +810,7 @@ curl -X PUT "https://<search>.search.windows.net/indexes/rooms-public?api-versio
 
 Chú ý: trong `POINT(...)` kinh độ đứng trước vĩ độ. Chuỗi trong OData bao bằng dấu nháy đơn; nháy đơn trong giá trị phải nhân đôi.
 
-**Tìm kiếm dự phòng** dùng cùng bộ lọc trên `v_rooms_public` (`ILIKE` cho `q`, `@>` cho tiện nghi, `distance_m()` cho khoảng cách) và trả cùng định dạng (không có `facets` thì trả mảng rỗng).
+**Tìm kiếm dự phòng** dùng cùng bộ lọc trên `v_rooms_public` và trả cùng định dạng: `q` tách theo khoảng trắng, **mọi từ** phải có trong tiêu đề, mô tả, đường, phường hoặc khu vực, so sánh không phân biệt hoa thường và dấu (`unaccent`); `@>` cho tiện nghi; `distance_m()` cho khoảng cách; `facets` tính như Azure (`area` tối đa 10, `amenities` tối đa 20). Lưu ý: analyzer `vi.microsoft` của chỉ mục Azure **không** bỏ dấu, nên tìm không dấu qua Azure vẫn ra 0 kết quả (muốn sửa cần đổi chỉ mục, mục 11.2).
 
 ### 11.4 Function Timer `daily-ticks-*` và hàng đợi `ops-ticks`
 
@@ -810,10 +848,12 @@ Mỗi hàm Timer chỉ khai báo được một lịch, nên hai lịch là hai 
 | Outbox | `OUTBOX_POLL_SECONDS` (5 s) | Gửi thay đổi sang Azure (12.2) |
 | Hàng đợi | `QUEUE_POLL_SECONDS` (30 s) | Nhận tín hiệu hẹn giờ (12.3) |
 | Telegram `getUpdates` | 30 s | Liên kết tài khoản (mục 3F) |
-| Lệnh quản trị | 5 s | Lấy dòng `job_runs` có `status='queued'` (do `POST /admin/backup/*` tạo), chạy `backup.sh` hoặc `restore-test.sh` với `JOB_RUN_ID=<id>` để kết quả ghi đúng dòng đó |
-| Heartbeat | 60 s | Số đo `worker_heartbeat` |
+| Lệnh quản trị | 5 s | Nhận một dòng `job_runs` `queued` (`backup` hoặc `restore_test`, do `POST /admin/backup/*` hoặc tin `daily_backup` tạo) bằng `FOR UPDATE SKIP LOCKED`, đổi sang `running`, chạy `backup.sh` hoặc `restore-test.sh` với `JOB_RUN_ID=<id>` trong luồng riêng (mỗi lần một việc, tối đa `JOB_TIMEOUT_SECONDS`) |
+| Heartbeat | 60 s | Số đo `worker_heartbeat` lên Application Insights (khi có `APPLICATIONINSIGHTS_CONNECTION_STRING`) |
 
 Mỗi việc bọc trong `try/except`, lỗi một việc không làm dừng việc khác.
+
+Lệnh quản trị: script tự ghi kết quả vào dòng `job_runs`; script thoát lỗi trước khi ghi (thiếu biến, mất kết nối) thì worker đánh dấu `failed` kèm dòng lỗi cuối (đã che chữ ký SAS). Chưa cấu hình đủ `AZURE_BACKUP_CONTAINER_URL`, `AZURE_BACKUP_SAS_WRITE`, `AZURE_BACKUP_SAS_READ` (hoặc đặt `DRY_RUN=1`) thì sao lưu chỉ lưu bản cục bộ (`details.uploaded = false`) và khôi phục thử dùng bản cục bộ mới nhất. Bản cục bộ nằm ở volume `backups` (`/var/backups/phongtro` trong container). Sao lưu do worker chạy không gồm file MinIO (image không có `mc`); bản đầy đủ chạy bằng cron trên vm-data (mục 13, 16).
 
 - Khi `AZURE_FUNCTION_KEY` trống hoặc còn `CHANGE_ME`, vòng outbox tạm dừng và ghi một dòng cảnh báo, không tăng `attempts` của dòng nào.
 - Tin `daily_backup` tạo dòng `job_runs(job='backup', status='queued')` để vòng lệnh quản trị chạy `backup.sh`. Ràng buộc `job_runs.job` không có giá trị `daily_backup`.
@@ -833,8 +873,8 @@ Với mỗi dòng:
 
 1. Nếu có dòng `pending` mới hơn cho cùng `entity_id` → đánh dấu dòng này `sent` (bị thay thế) và bỏ qua.
 2. Đọc `v_rooms_public` theo `entity_id`. Không thấy hoặc `status <> 'published'` → `op = delete`.
-3. `upsert`: với mỗi ảnh chưa có `public_url`, đọc từ MinIO `public-src`, tải lên Blob `public-images/rooms/<room_id>/<image_id>.jpg`, lưu `public_url`. Tính `est_monthly_cost`. Dựng tài liệu đúng danh sách trường mục 4.
-4. `delete`: xóa blob tiền tố `rooms/<room_id>/`.
+3. `upsert`: với mỗi ảnh đã duyệt chưa có `public_url`, đọc từ MinIO `public-src`, tải lên Blob `public-images/rooms/<room_id>/<image_id>.jpg|png` (theo đuôi ảnh gốc), lưu `public_url`. Chưa có `AZURE_STORAGE_CONNECTION_STRING` thì bỏ qua bước tải ảnh. Tính `est_monthly_cost`. Dựng tài liệu đúng danh sách trường mục 4.
+4. `delete`: xóa blob tiền tố `rooms/<room_id>/` và đặt `room_images.public_url = NULL` cho phòng đó (để khi hiện lại, ảnh được tải lên lại thay vì trỏ vào blob đã xóa).
 5. Gọi `ingest-room`. Thành công → `status='sent', sent_at=now()`.
 6. Lỗi → `attempts += 1`, `last_error`, `next_attempt_at = now() + min(30 s × 2^attempts, 30 phút)`. Khi `attempts ≥ OUTBOX_MAX_ATTEMPTS` → `failed` (hiện ở trang trạng thái, nút đồng bộ lại đặt về `pending, attempts=0`).
 
@@ -944,7 +984,7 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 |---|---|:-:|---|
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | api, worker, scripts | | Kết nối PostgreSQL |
 | `DB_PASSWORD` | db, api, worker, scripts | ✓ | |
-| `MINIO_ENDPOINT`, `MINIO_BUCKET_*` | api, worker | | |
+| `MINIO_ENDPOINT`, `MINIO_BUCKET_PRIVATE`, `MINIO_BUCKET_PUBLIC_SRC`, `MINIO_SECURE` | api, worker | | |
 | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | minio, api, worker | ✓ | |
 | `MC_ALIAS` | backup.sh | | Alias MinIO Client |
 | `JWT_SECRET`, `JWT_EXPIRE_MINUTES` | api | ✓ / | |
@@ -954,7 +994,9 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 | `CORS_ORIGINS` | api | | Để trống khi web và api cùng nguồn qua nginx; khi dev tách cổng ghi vd `http://localhost:5173` |
 | `REVIEW_SKIP_BOOKING_CHECK` | api | | `true` cho đánh giá không cần lịch `done` (chỉ để demo, mục 9.4) |
 | `FORWARDED_ALLOW_IPS` | api | | Dải mạng tin cậy gửi `X-Forwarded-For` (nginx); mặc định các dải nội bộ |
+| `API_DOCS` | api | | Mặc định `true`; đặt `false` trên VM để tắt `/api/docs` và `/api/openapi.json` |
 | `OUTBOX_POLL_SECONDS`, `QUEUE_POLL_SECONDS`, `OUTBOX_MAX_ATTEMPTS` | worker | | |
+| `DRY_RUN`, `JOB_TIMEOUT_SECONDS` | worker (lệnh quản trị), backup.sh | | `DRY_RUN=1`: sao lưu không tải lên Blob (dùng trên máy cá nhân để bản thử không thành "bản mới nhất" của nhóm); `JOB_TIMEOUT_SECONDS` mặc định 1800 |
 | `AZURE_FUNCTION_INGEST_URL` | worker | | `https://func-phongtro-<SUFFIX>.azurewebsites.net/api/ingest-room` |
 | `AZURE_FUNCTION_KEY` | worker | ✓ | |
 | `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX` | api | | |
@@ -966,10 +1008,11 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 | `AZURE_BACKUP_SAS_WRITE`, `AZURE_BACKUP_SAS_READ` | backup.sh / restore-test.sh | ✓ | Tách quyền ghi và đọc |
 | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `KEEP_LOCAL` | scripts | ✓ / | |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | api, worker | ✓ | |
+| `AZURE_KEY_VAULT_URL` | tham khảo | | Nơi giữ bản gốc các bí mật (mục 14), không phần mềm nào đọc trực tiếp |
 | `TELEGRAM_BOT_NAME` | api (qua `/config`), worker | | Tên đăng nhập của bot, không có `@`; giá trị `easyrent2006_bot` |
 | `TELEGRAM_BOT_TOKEN` | worker | ✓ | |
 
-`.env.example` bản v0.4 đã bỏ bốn biến `CONTENT_SAFETY_*`, `DOC_INTELLIGENCE_*` (F18–F22 đã bỏ), thêm `MINIO_SECURE`, ba biến của web ở trên, và điền sẵn `TELEGRAM_BOT_NAME=easyrent2006_bot`.
+v0.5 thêm `API_DOCS` vào `.env.example`. `.env.example` bản v0.4 đã bỏ bốn biến `CONTENT_SAFETY_*`, `DOC_INTELLIGENCE_*` (F18–F22 đã bỏ), thêm `MINIO_SECURE`, ba biến của web ở trên, và điền sẵn `TELEGRAM_BOT_NAME=easyrent2006_bot`.
 
 ---
 
@@ -977,8 +1020,9 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 
 | Mục | Giá trị |
 |---|---|
-| Lịch | 02:00 hằng ngày (cron trên vm-data); Function Timer gửi `daily_backup` làm dự phòng |
-| Nội dung | `db.dump` (`pg_dump -Fc`), thư mục MinIO `private`, `public-src` (nếu cấu hình `mc`), `manifest.json` (số dòng 9 bảng chính, SHA-256) |
+| Lịch | 02:00 hằng ngày (cron trên vm-data); Function Timer gửi `daily_backup` làm dự phòng (worker trên vm-app chạy `backup.sh`) |
+| Chạy theo yêu cầu | Nút "Sao lưu ngay", "Khôi phục thử" ở trang Hệ thống → dòng `job_runs` `queued` → worker chạy script (mục 12.1) |
+| Nội dung | `db.dump` (`pg_dump -Fc`), thư mục MinIO `private`, `public-src` (nếu cấu hình `mc`), `manifest.json` (số dòng 9 bảng chính, SHA-256). Bản dump và số dòng lấy trong **cùng một snapshot** (`pg_export_snapshot` + `pg_dump --snapshot`), nên dữ liệu ghi trong lúc sao lưu không làm khôi phục thử báo lệch |
 | Mã hóa | `openssl enc -aes-256-cbc -pbkdf2 -iter 200000`, khóa `BACKUP_PASSPHRASE` (gốc ở Key Vault) |
 | Nơi lưu | Blob `backups/<YYYY>/<MM>/phongtro-<YYYYMMDDTHHMMSSZ>.tar.gz.enc`; 3 bản gần nhất ở `/var/backups/phongtro` |
 | Quyền | Ghi bằng SAS `cw` (không đọc, không xóa); khôi phục bằng SAS `rl` |
@@ -998,19 +1042,21 @@ Kịch bản demo: (1) bấm "Sao lưu ngay" ở trang quản trị, (2) mở Az
 |---|---|---|
 | Thời gian phản hồi, số lỗi 5xx theo route | api (OpenTelemetry tự động) | Hiệu năng |
 | `search_fallback_count` | api | Số lần tìm bằng DB vì Azure lỗi |
-| `sync_sent`, `sync_failures`, `outbox_pending` | worker | Sức khỏe đồng bộ |
+| `sync_sent`, `sync_failures`, `outbox_pending`, `outbox_failed` | worker | Sức khỏe đồng bộ (`outbox_failed`: số dòng đã thử đủ lần và bỏ cuộc) |
 | `backup_success`, `backup_duration_ms`, `restore_test_ms` | worker | Sao lưu |
 | `worker_heartbeat` | worker | Worker còn sống |
 
 | Quy tắc cảnh báo | Điều kiện |
 |---|---|
-| Đồng bộ lỗi | `sync_failures` > 0 trong 15 phút |
-| Worker chết | Không có `worker_heartbeat` trong 5 phút |
-| Sao lưu trễ | Không có `backup_success` trong 26 giờ |
+| Đồng bộ lỗi | `sync_failures` > 0 trong 15 phút, hoặc `outbox_failed` > 0 (worker thử lại tới 30 phút một lần nên chỉ `sync_failures` thì cảnh báo tự tắt giữa chừng) |
+| Worker chết | Không có `worker_heartbeat` trong 10 phút (số đo xuất 60 giây một lần, Application Insights nhận trễ 1-3 phút; cửa sổ 5 phút dễ báo nhầm) |
+| Sao lưu trễ | Không có `backup_success` với `uploaded = true` trong 26 giờ (chỉ tính bản do worker chạy) |
 | api lỗi nhiều | Tỷ lệ 5xx > 5% trong 5 phút |
 | Chi phí | Budget đạt 50%, 80%, 100% |
 
-Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị (hoặc email). Không đưa dữ liệu cá nhân vào số đo hay nhật ký.
+Tất cả gửi qua Action Group `ag-phongtro-alerts` → Logic App `logic-phongtro-alerts` → Telegram nhóm quản trị. Không đưa dữ liệu cá nhân vào số đo hay nhật ký.
+
+Bốn quy tắc đầu là log search alert trên bảng `customMetrics`/`requests` của `appi-phongtro`, tạo bằng `infra/azure/alerts.sh` (chạy lại được). Số đo worker nằm ở `worker/worker/metrics.py`; `METRICS_CONSOLE=1` in số đo ra log để thử không cần Azure. Budget gắn Action Group trên portal.
 
 ---
 
@@ -1028,11 +1074,13 @@ Tất cả gửi qua Action Group → Logic App → Telegram nhóm quản trị 
 
 ## 19. Bảo mật
 
-- Mật khẩu băm argon2/bcrypt; tối thiểu 8 ký tự. JWT hết hạn sau `JWT_EXPIRE_MINUTES`.
+- Mật khẩu băm argon2/bcrypt; tối thiểu 8 ký tự, có cả chữ và số, **không** bị cắt khoảng trắng hai đầu. JWT hết hạn sau `JWT_EXPIRE_MINUTES`.
+- Email kiểm tra chặt hơn CHECK của CSDL (tên miền có đuôi chữ, không hai dấu chấm liền); họ tên và tiêu đề phòng không chứa `<` `>`.
 - Kiểm tra vai trò **và** quyền sở hữu ở mọi API (mục 7).
-- Giới hạn tần suất `/auth/login`: 10 lần/phút/IP.
-- Tải file: kiểm tra loại MIME và kích thước; tên đối tượng do server sinh (uuid), không dùng tên người dùng gửi.
-- File trong bucket `private` chỉ truy cập qua link ký trước, hạn 5 phút, chỉ chủ trọ sở hữu xem được. api cấp link `/api/v1/files/signed?token=...` vì URL ký của MinIO trỏ vào IP nội bộ.
+- Giới hạn tần suất: đăng nhập chỉ đếm lần **sai**, 10 lần/phút cho mỗi (IP, email) và 50 lần/phút cho mỗi IP (nhiều sinh viên dùng chung IP NAT); đăng ký 10 lần/10 phút/IP; báo cáo 20 lần/giờ/tài khoản.
+- Tải file: kiểm tra loại theo nội dung và kích thước; tên đối tượng do server sinh (uuid), không dùng tên người dùng gửi. Ảnh phòng được Pillow kiểm tra và **mã hóa lại** (bỏ EXIF, dữ liệu thừa sau ảnh); ảnh chờ duyệt chỉ xem được qua URL có token ký.
+- nginx thêm `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, và ghi log không kèm query string (token, chữ ký nằm trong query).
+- File trong bucket `private` chỉ truy cập qua link ký trước, hạn 60 giây, chỉ chủ trọ sở hữu xem được. api cấp link `/api/v1/files/signed?token=...` vì URL ký của MinIO trỏ vào IP nội bộ.
 - CORS mặc định không mở (`CORS_ORIGINS` trống) vì web và api cùng nguồn qua nginx. Không bật `debug` trên VM.
 - Trên VM, api chỉ nhận request qua nginx (sg-app không mở 8000). api tin header `X-Forwarded-For` từ dải `FORWARDED_ALLOW_IPS`; nếu api bị gọi thẳng, người dùng có thể giả IP để vượt giới hạn đăng nhập.
 - Giới hạn đăng nhập lưu trong bộ nhớ của tiến trình, nên api chạy `--workers 1`.

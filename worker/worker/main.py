@@ -2,6 +2,8 @@ import logging
 import os
 import signal
 import time
+from worker import metrics
+from worker.job_runs import process_job_runs
 from worker.outbox import process_sync_outbox
 from worker.queue import poll_ops_ticks_queue
 from worker import telegram
@@ -11,6 +13,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("worker.main")
+# Thư viện Azure ghi từng request/response HTTP (kèm header) ở mức INFO: chỉ giữ cảnh báo trở lên.
+for _name in ("azure", "azure.core.pipeline.policies.http_logging_policy", "azure.monitor.opentelemetry.exporter"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 RUNNING = True
 
@@ -21,15 +26,9 @@ def _handle_shutdown(signum, frame):
     RUNNING = False
 
 
-def process_job_runs() -> None:
-    logger.debug("[JobRuns] Đang kiểm tra các tác vụ nền trong bảng job_runs...")
-    # TODO (Mục 12.1, 16): Lấy dòng job_runs có status='queued' (backup / restore_test)
-    # và gọi backup.sh hoặc restore-test.sh với biến môi trường JOB_RUN_ID=<id>
-
-
 def emit_heartbeat() -> None:
+    metrics.count("worker_heartbeat")
     logger.info("[Heartbeat] Worker hoạt động bình thường.")
-    # TODO (Mục 17): Đẩy custom metric 'worker_heartbeat' lên Application Insights
 
 
 def main() -> None:
@@ -53,6 +52,7 @@ def main() -> None:
         "heartbeat": emit_heartbeat,
     }
 
+    metrics.setup()
     logger.info("Khởi động Worker service...")
     while RUNNING:
         now = time.monotonic()
