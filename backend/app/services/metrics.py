@@ -14,7 +14,7 @@ _lock = threading.Lock()
 _counter = None
 
 
-def setup_telemetry(app) -> None:
+def setup_telemetry() -> None:
     global _counter
     if settings.appinsights_enabled:
         try:

@@ -23,12 +23,15 @@ async def lifespan(_: FastAPI):
     yield
 
 
+# Phải gọi TRƯỚC khi tạo FastAPI(...): configure_azure_monitor chỉ tự gắn instrumentation cho app
+# tạo sau nó; gọi sau thì bảng `requests` trong Application Insights trống và cảnh báo 5xx không báo.
+setup_telemetry()
+
 # API_DOCS=false trên VM thật để không công khai Swagger/OpenAPI (BE-17).
 app = FastAPI(title="EasyRent API", version="0.3.0", lifespan=lifespan,
               docs_url="/api/docs" if settings.api_docs else None,
               openapi_url="/api/openapi.json" if settings.api_docs else None, redoc_url=None)
 install_error_handlers(app)
-setup_telemetry(app)
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 if origins:
