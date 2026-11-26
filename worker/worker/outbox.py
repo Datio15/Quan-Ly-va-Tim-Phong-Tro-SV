@@ -4,12 +4,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import ContentSettings
 from minio import Minio
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from worker import metrics
+from worker import metrics, storage
 from worker.db import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -34,12 +34,6 @@ def _get_minio_client() -> Minio:
         secure=secure,
     )
 
-def _get_blob_container_client():
-    conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
-    service = BlobServiceClient.from_connection_string(conn_str)
-    return service.get_container_client("public-images")
-
-
 def _sync_room_images(db: Session, room_id: str) -> list[str]:
     """Đẩy các ảnh đã duyệt (moderation='ok') chưa có public_url từ MinIO lên Azure Blob."""
     rows = db.execute(
@@ -56,11 +50,12 @@ def _sync_room_images(db: Session, room_id: str) -> list[str]:
         return []
 
     need_upload = [r for r in rows if not r["public_url"]]
-    if need_upload and not _is_set(os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")):
-        logger.warning("[Outbox] Chưa cấu hình AZURE_STORAGE_CONNECTION_STRING: bỏ qua %d ảnh chưa đồng bộ", len(need_upload))
+    if need_upload and storage.images_mode() is None:
+        logger.warning("[Outbox] Chưa cấu hình Blob public-images (AZURE_PUBLIC_IMAGES_SAS): bỏ qua %d ảnh chưa đồng bộ",
+                       len(need_upload))
         return [r["public_url"] for r in rows if r["public_url"]]
     minio_client = _get_minio_client() if need_upload else None
-    container_client = _get_blob_container_client() if need_upload else None
+    container_client = storage.images_container() if need_upload else None
     src_bucket = os.getenv("MINIO_BUCKET_PUBLIC_SRC", "public-src")
     public_base = os.getenv("AZURE_BLOB_PUBLIC_BASE_URL", "").rstrip("/")
 
@@ -90,7 +85,8 @@ def _sync_room_images(db: Session, room_id: str) -> list[str]:
             content_settings=ContentSettings(content_type=content_type),
         )
 
-        public_url = f"{public_base}/{blob_name}" if public_base else blob_client.url
+        # blob_client.url của client tạo từ SAS có kèm chữ ký: phải bỏ trước khi lưu và gửi lên chỉ mục.
+        public_url = f"{public_base}/{blob_name}" if public_base else storage.public_url(blob_client.url)
         db.execute(
             text("UPDATE room_images SET public_url = :url WHERE id = :id"),
             {"url": public_url, "id": row["id"]},
@@ -111,10 +107,9 @@ def _delete_room_blobs(db: Session, room_id: str) -> None:
     Đồng thời xóa room_images.public_url: nếu không, khi phòng hiện lại, _sync_room_images thấy ảnh
     "đã có URL" nên không tải lại, chỉ mục và trang web trỏ vào blob đã bị xóa (ảnh hỏng).
     """
-    conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
-    if not _is_set(conn_str):
+    container_client = storage.images_container()
+    if container_client is None:
         return
-    container_client = _get_blob_container_client()
     prefix = f"rooms/{room_id}/"
     for blob in container_client.list_blobs(name_starts_with=prefix):
         container_client.delete_blob(blob.name)
