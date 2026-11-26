@@ -873,7 +873,7 @@ Với mỗi dòng:
 
 1. Nếu có dòng `pending` mới hơn cho cùng `entity_id` → đánh dấu dòng này `sent` (bị thay thế) và bỏ qua.
 2. Đọc `v_rooms_public` theo `entity_id`. Không thấy hoặc `status <> 'published'` → `op = delete`.
-3. `upsert`: với mỗi ảnh đã duyệt chưa có `public_url`, đọc từ MinIO `public-src`, tải lên Blob `public-images/rooms/<room_id>/<image_id>.jpg|png` (theo đuôi ảnh gốc), lưu `public_url`. Chưa có `AZURE_STORAGE_CONNECTION_STRING` thì bỏ qua bước tải ảnh. Tính `est_monthly_cost`. Dựng tài liệu đúng danh sách trường mục 4.
+3. `upsert`: với mỗi ảnh đã duyệt chưa có `public_url`, đọc từ MinIO `public-src`, tải lên Blob `public-images/rooms/<room_id>/<image_id>.jpg|png` (theo đuôi ảnh gốc), lưu `public_url`. Chưa có `AZURE_PUBLIC_IMAGES_SAS` (hoặc chuỗi kết nối dự phòng) thì bỏ qua bước tải ảnh. URL lưu vào `public_url` không bao giờ chứa SAS. Tính `est_monthly_cost`. Dựng tài liệu đúng danh sách trường mục 4.
 4. `delete`: xóa blob tiền tố `rooms/<room_id>/` và đặt `room_images.public_url = NULL` cho phòng đó (để khi hiện lại, ảnh được tải lên lại thay vì trỏ vào blob đã xóa).
 5. Gọi `ingest-room`. Thành công → `status='sent', sent_at=now()`.
 6. Lỗi → `attempts += 1`, `last_error`, `next_attempt_at = now() + min(30 s × 2^attempts, 30 phút)`. Khi `attempts ≥ OUTBOX_MAX_ATTEMPTS` → `failed` (hiện ở trang trạng thái, nút đồng bộ lại đặt về `pending, attempts=0`).
@@ -1002,7 +1002,9 @@ Mẫu đầy đủ trong `.env.example`. `.env` và `.env.*` bị `.gitignore` c
 | `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX` | api | | |
 | `AZURE_SEARCH_QUERY_KEY` | api | ✓ | Chỉ đọc |
 | `AZURE_MAPS_KEY` | web (qua api `/config`) | ✓* | Lộ ra trình duyệt, chỉ cho Maps |
-| `AZURE_STORAGE_CONNECTION_STRING` | worker | ✓ | Blob ảnh công khai, hàng đợi |
+| `AZURE_PUBLIC_IMAGES_SAS` | worker | ✓ | SAS container `public-images`, policy `worker-pub`, quyền `cwdl` (không đọc) |
+| `AZURE_QUEUE_URL`, `AZURE_QUEUE_SAS` | worker | / ✓ | SAS hàng đợi `ops-ticks`, policy `worker-queue`, quyền `p` (nhận, xóa tin) |
+| `AZURE_STORAGE_CONNECTION_STRING` | worker | ✓ | Toàn quyền tài khoản; worker chỉ dùng khi thiếu SAS. Xóa khỏi VM sau khi chuyển sang SAS (`LUU-Y-SAS.md`) |
 | `AZURE_QUEUE_NAME`, `AZURE_BLOB_PUBLIC_BASE_URL` | worker, api | | |
 | `AZURE_BACKUP_CONTAINER_URL` | scripts | | |
 | `AZURE_BACKUP_SAS_WRITE`, `AZURE_BACKUP_SAS_READ` | backup.sh / restore-test.sh | ✓ | Tách quyền ghi và đọc |

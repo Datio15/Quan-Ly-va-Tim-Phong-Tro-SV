@@ -11,10 +11,9 @@ import logging
 import os
 
 from azure.core.exceptions import AzureError
-from azure.storage.queue import QueueClient
 from sqlalchemy import text
 
-from worker import jobs
+from worker import jobs, storage
 from worker.db import engine
 
 logger = logging.getLogger(__name__)
@@ -36,14 +35,10 @@ def _get_client():
     global _client, _warned
     if _client is not None:
         return _client
-    conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING', '').strip()
-    if conn_str in ('', 'CHANGE_ME'):
-        if not _warned:
-            logger.warning('[Queue] chua cau hinh AZURE_STORAGE_CONNECTION_STRING, tam dung doc hang doi')
-            _warned = True
-        return None
-    # Không đặt message_encode_policy: tin là văn bản JSON thuần, không base64.
-    _client = QueueClient.from_connection_string(conn_str, os.getenv('AZURE_QUEUE_NAME', 'ops-ticks'))
+    _client = storage.queue_client(os.getenv('AZURE_QUEUE_NAME', 'ops-ticks'))
+    if _client is None and not _warned:
+        logger.warning('[Queue] chua cau hinh AZURE_QUEUE_SAS/AZURE_QUEUE_URL, tam dung doc hang doi')
+        _warned = True
     return _client
 
 

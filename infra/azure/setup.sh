@@ -54,6 +54,7 @@ az storage container create -n public-images --public-access blob --connection-s
 az storage container create -n backups --public-access off --connection-string "$CONN" -o none
 az storage queue create -n ops-ticks --connection-string "$CONN" -o none
 EXPIRY="$(date -u -d '+45 days' +%Y-%m-%dT%H:%MZ)"
+# Toàn quyền tài khoản: chỉ để Function/quản trị; KHÔNG chép lên VM khi đã có SAS cho worker.
 put AZURE_STORAGE_CONNECTION_STRING "\"$CONN\""
 put AZURE_QUEUE_NAME ops-ticks
 put AZURE_BACKUP_CONTAINER_URL "https://${ST}.blob.core.windows.net/backups"
@@ -62,6 +63,21 @@ put AZURE_BACKUP_SAS_WRITE "\"$(az storage container generate-sas -n backups --p
 put AZURE_BACKUP_SAS_READ "\"$(az storage container generate-sas -n backups --permissions rl \
   --expiry "$EXPIRY" --https-only --connection-string "$CONN" -o tsv)\""
 put AZURE_BLOB_PUBLIC_BASE_URL "https://${ST}.blob.core.windows.net/public-images"
+# SAS cho worker (LUU-Y-SAS.md): worker chỉ cần ghi/xóa ảnh công khai và nhận tin hàng đợi. Mỗi SAS gắn một
+# stored access policy: xóa policy là SAS mất hiệu lực ngay, không phải đổi khóa tài khoản.
+az storage container policy create -c public-images -n worker-pub --permissions cwdl --expiry "$EXPIRY" \
+  --connection-string "$CONN" -o none 2>/dev/null \
+  || az storage container policy update -c public-images -n worker-pub --permissions cwdl --expiry "$EXPIRY" \
+       --connection-string "$CONN" -o none
+az storage queue policy create -q ops-ticks -n worker-queue --permissions p --expiry "$EXPIRY" \
+  --connection-string "$CONN" -o none 2>/dev/null \
+  || az storage queue policy update -q ops-ticks -n worker-queue --permissions p --expiry "$EXPIRY" \
+       --connection-string "$CONN" -o none
+put AZURE_PUBLIC_IMAGES_SAS "\"$(az storage container generate-sas -n public-images --policy-name worker-pub \
+  --https-only --connection-string "$CONN" -o tsv)\""
+put AZURE_QUEUE_URL "https://${ST}.queue.core.windows.net/ops-ticks"
+put AZURE_QUEUE_SAS "\"$(az storage queue generate-sas -n ops-ticks --policy-name worker-queue \
+  --https-only --connection-string "$CONN" -o tsv)\""
 
 step "3. AI Search (gói free) và chỉ mục rooms-public"
 az search service create -n "$SEARCH" -g "$RG" -l "$LOC" --sku free -o none

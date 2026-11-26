@@ -114,7 +114,9 @@ chỉ mục vẫn thiếu cho tới khi đồng bộ xong). Làm theo thứ tự
    ```
    AZURE_FUNCTION_INGEST_URL=https://func-phongtro-<SUFFIX>.azurewebsites.net/api/ingest-room
    AZURE_FUNCTION_KEY=<khóa hàm ingest-room>
-   AZURE_STORAGE_CONNECTION_STRING=<chuỗi kết nối Storage>
+   AZURE_PUBLIC_IMAGES_SAS=<SAS cwdl của public-images>      # cách tạo: LUU-Y-SAS.md
+   AZURE_QUEUE_URL=https://stphongtro<SUFFIX>.queue.core.windows.net/ops-ticks
+   AZURE_QUEUE_SAS=<SAS p của ops-ticks>
    AZURE_BLOB_PUBLIC_BASE_URL=https://stphongtro<SUFFIX>.blob.core.windows.net/public-images
    ```
    rồi `docker compose up -d worker`. Log worker không còn dòng "Tạm dừng đồng bộ vì chưa cấu hình AZURE_FUNCTION_URL/KEY".
@@ -124,7 +126,8 @@ chỉ mục vẫn thiếu cho tới khi đồng bộ xong). Làm theo thứ tự
 4. Kiểm tra: container Blob `public-images` có thư mục `rooms/<id>/`; thẻ phòng trên trang tìm kiếm có ảnh và ảnh
    có địa chỉ `https://stphongtro<SUFFIX>.blob.core.windows.net/...` (không phải `/api/v1/images/...`).
 5. Chỉ **một** worker được đọc hàng đợi `ops-ticks` của nhóm (worker trên VM). Máy cá nhân có khóa Storage thì đặt
-   `AZURE_STORAGE_CONNECTION_STRING: ""` cho service `worker` trong `docker-compose.override.yml` (không đưa lên git).
+   `AZURE_QUEUE_SAS: ""` và `AZURE_STORAGE_CONNECTION_STRING: ""` cho service `worker` trong
+   `docker-compose.override.yml` (không đưa lên git).
 
 ---
 
